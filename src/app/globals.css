@@ -1,26 +1,52 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: 0 0% 4.3%;
+    --foreground: 0 0% 97%;
+    --card: 0 0% 10.2%;
+    --card-foreground: 0 0% 97%;
+    --popover: 0 0% 10.2%;
+    --popover-foreground: 0 0% 97%;
+    --primary: 262 83% 66%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 15.7%;
+    --secondary-foreground: 0 0% 97%;
+    --muted: 0 0% 15.7%;
+    --muted-foreground: 0 0% 67%;
+    --accent: 142 71% 45%;
+    --accent-foreground: 0 0% 7%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 16.5%;
+    --input: 0 0% 16.5%;
+    --ring: 262 83% 66%;
+    --surface: 0 0% 10.2%;
+    --gold: 38 92% 50%;
+    --success: 142 71% 45%;
+    --radius: 1rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply h-full scroll-smooth;
+  }
+
+  body {
+    @apply min-h-full bg-background text-foreground antialiased;
+    background-image:
+      radial-gradient(circle at top, rgba(139, 92, 246, 0.18), transparent 30%),
+      radial-gradient(circle at bottom right, rgba(34, 197, 94, 0.12), transparent 28%);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary via-gold to-accent bg-clip-text text-transparent;
+  }
 }
