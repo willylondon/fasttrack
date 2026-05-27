@@ -23,7 +23,7 @@ export function TimerRing({ elapsedMinutes, plannedMinutes, progress, stage, act
         className="absolute inset-12 rounded-full blur-2xl transition-all duration-500"
         style={{ backgroundColor: `${stage.color}28` }}
       />
-      <svg viewBox="0 0 260 260" className="size-72 drop-shadow-[0_0_38px_rgba(0,0,0,0.26)]">
+      <svg viewBox="0 0 260 260" className="size-56 sm:size-72 drop-shadow-[0_0_38px_rgba(0,0,0,0.26)]">
         <circle cx="130" cy="130" r={radius} className="fill-transparent stroke-white/[0.06]" strokeWidth="16" />
         <circle
           cx="130"
@@ -38,13 +38,13 @@ export function TimerRing({ elapsedMinutes, plannedMinutes, progress, stage, act
           transform="rotate(-90 130 130)"
         />
       </svg>
-      <div className="glass-card absolute flex size-52 flex-col items-center justify-center rounded-full text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-        <p className="text-[0.68rem] uppercase tracking-[0.26em] text-muted-foreground">Target {targetHours}h</p>
-        <p className="mt-3 font-[family:var(--font-heading)] text-[2.25rem] font-bold tracking-tight text-foreground sm:text-5xl">
+      <div className="glass-card absolute flex size-40 sm:size-52 flex-col items-center justify-center rounded-full text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <p className="text-[0.55rem] uppercase tracking-[0.22em] text-muted-foreground sm:text-[0.68rem]">Target {targetHours}h</p>
+        <p className="mt-2 sm:mt-3 font-[family:var(--font-heading)] text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
           {durationLabel}
         </p>
-        <div className="mt-3 flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.05] px-3 py-1.5 text-sm text-muted-foreground">
-          <span className="text-base">{stage.emoji}</span>
+        <div className="mt-2 sm:mt-3 flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.05] px-2.5 py-1 text-xs sm:px-3 sm:py-1.5 sm:text-sm text-muted-foreground">
+          <span className="text-sm sm:text-base">{stage.emoji}</span>
           <span>{active ? stage.label : "Ready to start"}</span>
         </div>
       </div>

@@ -448,7 +448,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[1.45fr_0.95fr]">
+    <div className="grid gap-6 lg:grid-cols-[1.45fr_0.95fr]">
       <Card className="section-enter overflow-hidden" style={{ animationDelay: "0ms" }}>
         <CardHeader className="border-b border-white/[0.08] pb-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -464,7 +464,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-8 pt-6 lg:grid-cols-[1.08fr_0.92fr]">
+        <CardContent className="grid gap-6 pt-6 lg:grid-cols-[1.08fr_0.92fr]">
           <div className="flex flex-col items-center justify-center gap-6">
             <TimerRing
               active={Boolean(activeSession)}
@@ -486,9 +486,9 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
             </div>
           </div>
           <div className="space-y-5">
-            <div className="glass-soft grid gap-4 rounded-[1.5rem] p-4">
+            <div className="glass-soft grid gap-4 rounded-[1.5rem] p-3 sm:p-4">
               <label className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Planned duration</label>
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_140px]">
+              <div className="flex flex-col gap-3 sm:grid sm:grid-cols-[minmax(0,1fr)_140px]">
                 <Select value={selectedPreset} onValueChange={(value) => setSelectedPreset(value as typeof selectedPreset)}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select a fasting window" />
@@ -516,7 +516,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
               </p>
             </div>
 
-            <div className="glass-soft grid gap-3 rounded-[1.5rem] p-4">
+            <div className="glass-soft grid gap-3 rounded-[1.5rem] p-3 sm:p-4">
               <div className="flex items-center justify-between gap-3">
                 <label className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Session note</label>
                 <span className="text-xs text-muted-foreground">Saved at finish</span>
@@ -530,11 +530,11 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
-              <Button className="h-11" disabled={isMutatingFast} onClick={startFast}>
+              <Button className="h-11 w-full" disabled={isMutatingFast} onClick={startFast}>
                 Start
               </Button>
               <Button
-                className="h-11"
+                className="h-11 w-full"
                 disabled={!activeSession || isMutatingFast}
                 onClick={() => setPendingAction("complete")}
                 variant="secondary"
@@ -542,7 +542,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
                 End
               </Button>
               <Button
-                className="h-11"
+                className="h-11 w-full"
                 disabled={!activeSession || isMutatingFast}
                 onClick={() => setPendingAction("cancel")}
                 variant="destructive"
@@ -551,7 +551,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
               </Button>
             </div>
 
-            <div className="glass-soft rounded-[1.5rem] p-4">
+            <div className="glass-soft rounded-[1.5rem] p-3 sm:p-4">
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Fasting stages</p>
@@ -565,7 +565,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
                   {currentStage.emoji} {currentStage.label}
                 </Badge>
               </div>
-              <div className="-mx-1 mt-4 flex gap-3 overflow-x-auto px-1 pb-2">
+              <div className="-mx-1 mt-4 flex gap-1 overflow-x-auto px-1 pb-2 scrollbar-none">
                 {FASTING_STAGES.map((stage, index) => {
                   const state = getStageCardState(index, currentStageIndex, Boolean(activeSession));
                   const isCurrent = state === "current";
@@ -575,7 +575,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
                     <div
                       key={stage.hour}
                       className={cn(
-                        "min-w-[170px] rounded-[1.4rem] border px-4 py-3 transition-all duration-500",
+                        "min-w-[120px] sm:min-w-[170px] rounded-[1.1rem] sm:rounded-[1.4rem] border px-2.5 py-2 sm:px-4 sm:py-3 transition-all duration-500",
                         state === "future" && "border-white/[0.08] bg-white/[0.03] text-muted-foreground opacity-40",
                         isCompleted && "border-white/[0.08] bg-white/[0.04] text-muted-foreground opacity-70",
                         isCurrent && "text-foreground"
@@ -591,15 +591,15 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
                       }
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <span className="font-[family:var(--font-heading)] text-sm font-medium">
+                        <span className="font-[family:var(--font-heading)] text-[10px] sm:text-sm font-medium">
                           {formatStageHour(stage.hour)}
                         </span>
-                        <span className="flex items-center gap-2 text-sm">
-                          {isCompleted ? <Check className="size-3.5 text-accent" /> : null}
-                          <span>{stage.emoji}</span>
+                        <span className="flex items-center gap-1 text-xs sm:text-sm">
+                          {isCompleted ? <Check className="size-3 text-accent sm:size-3.5" /> : null}
+                          <span className="text-xs sm:text-sm">{stage.emoji}</span>
                         </span>
                       </div>
-                      <p className="mt-3 text-sm font-medium text-foreground">{stage.label}</p>
+                      <p className="mt-2 text-[11px] sm:mt-3 sm:text-sm font-medium text-foreground">{stage.label}</p>
                     </div>
                   );
                 })}
@@ -630,27 +630,27 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
         </CardFooter>
       </Card>
 
-      <div className="grid gap-8">
+      <div className="grid gap-6">
         <Card className="section-enter" style={{ animationDelay: "100ms" }}>
           <CardHeader>
             <CardTitle>Quick stats</CardTitle>
             <CardDescription>Your synced FastTrack snapshot.</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3">
+          <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-1">
             {[
               { label: "Total fasts", value: stats.totalFasts.toString(), icon: Flag },
               { label: "Total hours", value: stats.totalHours.toString(), icon: Flame },
               { label: "Average", value: formatCompactDuration(stats.averageMinutes), icon: PauseCircle },
               { label: "Current streak", value: `${stats.currentStreak} day${stats.currentStreak === 1 ? "" : "s"}`, icon: Trophy },
             ].map((item) => (
-              <div key={item.label} className="glass-soft flex items-center justify-between rounded-[1.4rem] px-4 py-3">
+              <div key={item.label} className="glass-soft flex items-center justify-between rounded-[1.4rem] px-3 py-3 sm:px-4">
                 <div className="flex items-center gap-3">
                   <div className="rounded-2xl bg-primary/10 p-2 text-primary shadow-[0_8px_20px_rgba(139,92,246,0.16)]">
                     <item.icon className="size-4" />
                   </div>
                   <span className="text-xs uppercase tracking-[0.22em] text-muted-foreground">{item.label}</span>
                 </div>
-                <span className="font-[family:var(--font-heading)] text-3xl font-bold">{item.value}</span>
+                <span className="font-[family:var(--font-heading)] text-2xl sm:text-3xl font-bold">{item.value}</span>
               </div>
             ))}
           </CardContent>
@@ -670,23 +670,23 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="glass-soft grid gap-3 rounded-[1.5rem] p-4">
+            <div className="glass-soft grid gap-3 rounded-[1.5rem] p-3 sm:p-4">
               <label className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Invite by email</label>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Input
                   onChange={(event) => setInviteEmail(event.target.value)}
                   placeholder="friend@example.com"
                   value={inviteEmail}
                 />
-                <Button className="h-11 px-4" disabled={isInviting} onClick={sendFriendRequest}>
+                <Button className="h-11 w-full sm:w-auto px-4" disabled={isInviting} onClick={sendFriendRequest}>
                   <UserPlus className="size-4" />
                 </Button>
               </div>
-              <div className="flex gap-2">
-                <Link href="/feed" className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "rounded-xl")}>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Link href="/feed" className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "w-full justify-center rounded-xl sm:w-auto")}>
                   Open Feed
                 </Link>
-                <Link href="/friends" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-xl")}>
+                <Link href="/friends" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-full justify-center rounded-xl sm:w-auto")}>
                   Open Friends
                 </Link>
               </div>

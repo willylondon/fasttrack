@@ -163,9 +163,8 @@ export function FriendsView({ initialData }: FriendsViewProps) {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <Input
-              className="h-11 rounded-2xl border-border/80 bg-card"
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
@@ -176,7 +175,7 @@ export function FriendsView({ initialData }: FriendsViewProps) {
               placeholder="Search by name or email"
               value={query}
             />
-            <Button className="h-11 rounded-2xl px-4" disabled={isSearching} onClick={() => void runSearch()}>
+            <Button className="h-11 w-full sm:w-auto px-4" disabled={isSearching} onClick={() => void runSearch()}>
               <Search className="size-4" />
             </Button>
           </div>
@@ -184,7 +183,7 @@ export function FriendsView({ initialData }: FriendsViewProps) {
           <div className="space-y-3">
             {searchResults.length ? (
               searchResults.map((result) => (
-                <div key={result.id} className="glass-soft flex items-center justify-between gap-3 rounded-[1.5rem] px-4 py-4">
+                <div key={result.id} className="glass-soft flex flex-col gap-3 rounded-[1.5rem] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-3">
                     <Avatar size="sm">
                       <AvatarImage src={result.avatarUrl ?? undefined} alt={result.displayName ?? "Member"} />
@@ -198,7 +197,7 @@ export function FriendsView({ initialData }: FriendsViewProps) {
                     </div>
                   </div>
                   <Button
-                    className="rounded-xl"
+                    className="w-full rounded-xl sm:w-auto"
                     disabled={pendingActionId === result.email}
                     onClick={() => result.email && void addFriend(result.email)}
                     size="sm"

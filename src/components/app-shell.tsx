@@ -1,19 +1,10 @@
 import Link from "next/link";
-import { Menu } from "lucide-react";
 import { Session } from "next-auth";
 
 import { AuthButton } from "@/components/auth/auth-button";
 import { BrandMark } from "@/components/brand-mark";
-import { buttonVariants } from "@/components/ui/button";
+import { MobileNav } from "@/components/layout/mobile-nav";
 import { Separator } from "@/components/ui/separator";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
 type AppShellProps = {
@@ -80,40 +71,6 @@ export function AppShell({
             </div>
             <div className="flex items-center gap-2 md:hidden">
               <AuthButton providers={providers} user={session?.user} />
-              <Sheet>
-                <SheetTrigger
-                  aria-label="Open navigation"
-                  className={cn(
-                    buttonVariants({ variant: "outline", size: "icon-sm" }),
-                    "rounded-full"
-                  )}
-                >
-                  <Menu className="size-4" />
-                </SheetTrigger>
-                <SheetContent side="right" className="glass-card border-l border-white/[0.08] bg-card/90">
-                  <SheetHeader>
-                    <SheetTitle>FastTrack</SheetTitle>
-                    <SheetDescription>{description}</SheetDescription>
-                  </SheetHeader>
-                  <nav className="space-y-2 px-4 pb-6">
-                    {navItems.map((item) => (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className={cn(
-                          buttonVariants({
-                            variant: item.href === currentPath ? "default" : "ghost",
-                            size: "default",
-                          }),
-                          "w-full justify-start rounded-2xl"
-                        )}
-                      >
-                        {item.label}
-                      </Link>
-                    ))}
-                  </nav>
-                </SheetContent>
-              </Sheet>
             </div>
           </div>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -126,8 +83,9 @@ export function AppShell({
             <p className="max-w-xl text-sm leading-6 text-muted-foreground">{description}</p>
           </div>
         </header>
-        <main className="flex-1 py-6">{children}</main>
+        <main className="flex-1 py-6 pb-24 md:pb-6">{children}</main>
       </div>
+      <MobileNav currentPath={currentPath} />
     </div>
   );
 }
