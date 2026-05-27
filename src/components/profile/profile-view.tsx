@@ -122,7 +122,7 @@ export function ProfileView({ initialData }: ProfileViewProps) {
 
   return (
     <div className="grid gap-6">
-      <Card className="border border-border/80 bg-card/90">
+      <Card className="section-enter" style={{ animationDelay: "0ms" }}>
         <CardHeader>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4">
@@ -131,7 +131,7 @@ export function ProfileView({ initialData }: ProfileViewProps) {
                 <AvatarFallback>{getInitials(initialData.profile.displayName)}</AvatarFallback>
               </Avatar>
               <div>
-                <CardTitle className="font-[family:var(--font-heading)] text-2xl">{initialData.profile.displayName ?? "FastTrack user"}</CardTitle>
+                <CardTitle>{initialData.profile.displayName ?? "FastTrack user"}</CardTitle>
                 <CardDescription>Level {initialData.profile.level} • {initialData.profile.xp} XP total</CardDescription>
               </div>
             </div>
@@ -147,7 +147,7 @@ export function ProfileView({ initialData }: ProfileViewProps) {
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="rounded-[1.5rem] border border-border/70 bg-background/70 p-4">
+          <div className="glass-soft rounded-[1.5rem] p-4">
             <div className="mb-3 flex items-center justify-between">
               <p className="text-sm font-medium text-foreground">XP progress</p>
               <p className="text-xs text-muted-foreground">
@@ -167,18 +167,18 @@ export function ProfileView({ initialData }: ProfileViewProps) {
               { label: "Best stage", value: `${initialData.profile.highestStageReached}h` },
               { label: "Friends", value: initialData.profile.friendCount.toString() },
             ].map((item) => (
-              <div key={item.label} className="rounded-[1.5rem] border border-border/70 bg-background/70 px-4 py-4">
+              <div key={item.label} className="glass-soft rounded-[1.5rem] px-4 py-4">
                 <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">{item.label}</p>
-                <p className="mt-2 font-[family:var(--font-heading)] text-2xl font-semibold text-foreground">{item.value}</p>
+                <p className="mt-2 font-[family:var(--font-heading)] text-3xl font-bold text-foreground">{item.value}</p>
               </div>
             ))}
           </div>
         </CardContent>
       </Card>
 
-      <Card className="border border-border/80 bg-card/90">
+      <Card className="section-enter" style={{ animationDelay: "100ms" }}>
         <CardHeader>
-          <CardTitle className="font-[family:var(--font-heading)]">Badge cabinet</CardTitle>
+          <CardTitle>Badge cabinet</CardTitle>
           <CardDescription>Earned badges stay vivid. Locked ones stay mysterious.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -211,9 +211,9 @@ export function ProfileView({ initialData }: ProfileViewProps) {
         </CardContent>
       </Card>
 
-      <Card className="border border-border/80 bg-card/90">
+      <Card className="section-enter" style={{ animationDelay: "200ms" }}>
         <CardHeader>
-          <CardTitle className="font-[family:var(--font-heading)]">Recent activity</CardTitle>
+          <CardTitle>Recent activity</CardTitle>
           <CardDescription>Your latest milestones, badges, and level shifts.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -221,7 +221,7 @@ export function ProfileView({ initialData }: ProfileViewProps) {
             initialData.recentActivity.map((event) => (
               <div
                 key={event.id}
-                className="flex gap-3 rounded-[1.5rem] border border-border/70 bg-background/70 px-4 py-4"
+                className="glass-soft flex gap-3 rounded-[1.5rem] px-4 py-4"
               >
                 <Avatar size="sm">
                   <AvatarImage src={initialData.profile?.avatarUrl ?? undefined} alt={initialData.profile?.displayName ?? "Profile"} />

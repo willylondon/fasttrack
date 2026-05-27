@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { Check, Search, UserPlus, X } from "lucide-react";
+import { Check, Search, Sparkles, UserPlus, Users, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -150,10 +150,17 @@ export function FriendsView({ initialData }: FriendsViewProps) {
 
   return (
     <div className="grid gap-6">
-      <Card className="border border-border/80 bg-card/90">
+      <Card className="section-enter" style={{ animationDelay: "0ms" }}>
         <CardHeader>
-          <CardTitle className="font-[family:var(--font-heading)]">Find Friends</CardTitle>
-          <CardDescription>Search FastTrack profiles by name or email.</CardDescription>
+          <div className="flex items-center gap-3">
+            <div className="rounded-2xl bg-primary/10 p-2 text-primary shadow-[0_8px_20px_rgba(139,92,246,0.16)]">
+              <Search className="size-4" />
+            </div>
+            <div>
+              <CardTitle>Find Friends</CardTitle>
+              <CardDescription>Search FastTrack profiles by name or email.</CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-2">
@@ -177,10 +184,7 @@ export function FriendsView({ initialData }: FriendsViewProps) {
           <div className="space-y-3">
             {searchResults.length ? (
               searchResults.map((result) => (
-                <div
-                  key={result.id}
-                  className="flex items-center justify-between gap-3 rounded-[1.5rem] border border-border/70 bg-background/70 px-4 py-4"
-                >
+                <div key={result.id} className="glass-soft flex items-center justify-between gap-3 rounded-[1.5rem] px-4 py-4">
                   <div className="flex items-center gap-3">
                     <Avatar size="sm">
                       <AvatarImage src={result.avatarUrl ?? undefined} alt={result.displayName ?? "Member"} />
@@ -213,19 +217,26 @@ export function FriendsView({ initialData }: FriendsViewProps) {
         </CardContent>
       </Card>
 
-      <Card className="border border-border/80 bg-card/90">
+      <Card className="section-enter" style={{ animationDelay: "100ms" }}>
         <CardHeader>
-          <CardTitle className="font-[family:var(--font-heading)]">Pending Requests</CardTitle>
-          <CardDescription>Incoming and outgoing requests in one place.</CardDescription>
+          <div className="flex items-center gap-3">
+            <div className="rounded-2xl bg-gold/10 p-2 text-gold shadow-[0_8px_20px_rgba(245,158,11,0.16)]">
+              <Sparkles className="size-4" />
+            </div>
+            <div>
+              <CardTitle>Pending Requests</CardTitle>
+              <CardDescription>Incoming and outgoing requests in one place.</CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-5">
           <section className="space-y-3">
-            <h2 className="text-sm font-medium text-foreground">Incoming</h2>
+            <h2 className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Incoming</h2>
             {friendsData.incomingRequests.length ? (
               friendsData.incomingRequests.map((request) => (
                 <div
                   key={request.id}
-                  className="flex flex-col gap-3 rounded-[1.5rem] border border-border/70 bg-background/70 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                  className="glass-soft flex flex-col gap-3 rounded-[1.5rem] px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="flex items-center gap-3">
                     <Avatar size="sm">
@@ -271,12 +282,12 @@ export function FriendsView({ initialData }: FriendsViewProps) {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-sm font-medium text-foreground">Outgoing</h2>
+            <h2 className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Outgoing</h2>
             {friendsData.outgoingRequests.length ? (
               friendsData.outgoingRequests.map((request) => (
                 <div
                   key={request.id}
-                  className="flex flex-col gap-3 rounded-[1.5rem] border border-border/70 bg-background/70 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                  className="glass-soft flex flex-col gap-3 rounded-[1.5rem] px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="flex items-center gap-3">
                     <Avatar size="sm">
@@ -310,17 +321,24 @@ export function FriendsView({ initialData }: FriendsViewProps) {
         </CardContent>
       </Card>
 
-      <Card className="border border-border/80 bg-card/90">
+      <Card className="section-enter" style={{ animationDelay: "200ms" }}>
         <CardHeader>
-          <CardTitle className="font-[family:var(--font-heading)]">Friends List</CardTitle>
-          <CardDescription>Your accepted FastTrack circle ranked by streak.</CardDescription>
+          <div className="flex items-center gap-3">
+            <div className="rounded-2xl bg-accent/10 p-2 text-accent shadow-[0_8px_20px_rgba(34,197,94,0.16)]">
+              <Users className="size-4" />
+            </div>
+            <div>
+              <CardTitle>Friends List</CardTitle>
+              <CardDescription>Your accepted FastTrack circle ranked by streak.</CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
           {friendsData.friends.length ? (
             friendsData.friends.map((friend) => (
               <div
                 key={friend.id}
-                className="flex items-center justify-between gap-3 rounded-[1.5rem] border border-border/70 bg-background/70 px-4 py-4"
+                className="glass-soft flex items-center justify-between gap-3 rounded-[1.5rem] px-4 py-4"
               >
                 <div className="flex items-center gap-3">
                   <Avatar size="sm">

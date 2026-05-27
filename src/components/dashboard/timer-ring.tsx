@@ -1,45 +1,52 @@
+import { formatDuration } from "@/lib/fasting";
+import { FastingStage } from "@/lib/fasting-stages";
+
 type TimerRingProps = {
-  label: string;
+  elapsedMinutes: number;
   plannedMinutes: number;
   progress: number;
+  stage: FastingStage;
+  active: boolean;
 };
 
-export function TimerRing({ label, plannedMinutes, progress }: TimerRingProps) {
+export function TimerRing({ elapsedMinutes, plannedMinutes, progress, stage, active }: TimerRingProps) {
   const safeProgress = Math.max(0, Math.min(100, progress));
-  const radius = 108;
+  const radius = 104;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (safeProgress / 100) * circumference;
+  const durationLabel = active ? formatDuration(elapsedMinutes) : formatDuration(0);
+  const targetHours = Math.round(plannedMinutes / 60);
 
   return (
     <div className="relative flex items-center justify-center">
-      <svg viewBox="0 0 260 260" className="size-[260px] drop-shadow-[0_0_35px_rgba(139,92,246,0.25)]">
-        <defs>
-          <linearGradient id="fasttrack-ring" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#8B5CF6" />
-            <stop offset="50%" stopColor="#F59E0B" />
-            <stop offset="100%" stopColor="#22C55E" />
-          </linearGradient>
-        </defs>
-        <circle cx="130" cy="130" r={radius} className="fill-transparent stroke-white/5" strokeWidth="18" />
+      <div
+        className="absolute inset-12 rounded-full blur-2xl transition-all duration-500"
+        style={{ backgroundColor: `${stage.color}28` }}
+      />
+      <svg viewBox="0 0 260 260" className="size-72 drop-shadow-[0_0_38px_rgba(0,0,0,0.26)]">
+        <circle cx="130" cy="130" r={radius} className="fill-transparent stroke-white/[0.06]" strokeWidth="16" />
         <circle
           cx="130"
           cy="130"
           r={radius}
-          className="fill-transparent stroke-[url(#fasttrack-ring)] transition-all duration-500 ease-out"
-          strokeWidth="18"
+          className="fill-transparent transition-all duration-700 ease-out"
+          stroke={stage.color}
+          strokeWidth="16"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           strokeLinecap="round"
           transform="rotate(-90 130 130)"
         />
       </svg>
-      <div className="absolute flex size-44 flex-col items-center justify-center rounded-full border border-white/10 bg-background/80 text-center shadow-[inset_0_0_40px_rgba(255,255,255,0.03)] backdrop-blur">
-        <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Progress</p>
-        <p className="mt-3 font-[family:var(--font-heading)] text-5xl font-semibold tracking-tight">
-          {safeProgress}%
+      <div className="glass-card absolute flex size-52 flex-col items-center justify-center rounded-full text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <p className="text-[0.68rem] uppercase tracking-[0.26em] text-muted-foreground">Target {targetHours}h</p>
+        <p className="mt-3 font-[family:var(--font-heading)] text-[2.25rem] font-bold tracking-tight text-foreground sm:text-5xl">
+          {durationLabel}
         </p>
-        <p className="mt-2 text-sm text-muted-foreground">{label}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{Math.round(plannedMinutes / 60)} hour target</p>
+        <div className="mt-3 flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.05] px-3 py-1.5 text-sm text-muted-foreground">
+          <span className="text-base">{stage.emoji}</span>
+          <span>{active ? stage.label : "Ready to start"}</span>
+        </div>
       </div>
     </div>
   );

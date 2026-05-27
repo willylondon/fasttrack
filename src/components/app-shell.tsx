@@ -49,7 +49,7 @@ export function AppShell({
     <div className="relative min-h-screen overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.08),transparent_20%),radial-gradient(circle_at_bottom_right,rgba(34,197,94,0.08),transparent_22%)]" />
       <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-4 sm:px-6">
-        <header className="rounded-[1.75rem] border border-border/80 bg-card/80 p-4 shadow-[0_20px_80px_rgba(0,0,0,0.25)] backdrop-blur">
+        <header className="glass-card rounded-[1.9rem] p-4 shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
           <div className="flex items-center justify-between gap-4">
             <Link href="/" className="min-w-0">
               <BrandMark />
@@ -60,14 +60,19 @@ export function AppShell({
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    buttonVariants({
-                      variant: item.href === currentPath ? "default" : "ghost",
-                      size: "sm",
-                    }),
-                    "rounded-full"
+                    "group/nav relative inline-flex h-10 items-center justify-center rounded-full px-4 text-sm font-medium transition-all duration-200",
+                    item.href === currentPath
+                      ? "bg-white/[0.1] text-foreground shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
+                      : "text-muted-foreground hover:bg-white/[0.06] hover:text-foreground"
                   )}
                 >
                   {item.label}
+                  <span
+                    className={cn(
+                      "absolute -bottom-1.5 h-1.5 w-1.5 rounded-full bg-primary transition-all",
+                      item.href === currentPath ? "opacity-100" : "opacity-0 group-hover/nav:opacity-60"
+                    )}
+                  />
                 </Link>
               ))}
               <Separator orientation="vertical" className="mx-1 h-6" />
@@ -85,7 +90,7 @@ export function AppShell({
                 >
                   <Menu className="size-4" />
                 </SheetTrigger>
-                <SheetContent side="right" className="border-l border-border/80 bg-card">
+                <SheetContent side="right" className="glass-card border-l border-white/[0.08] bg-card/90">
                   <SheetHeader>
                     <SheetTitle>FastTrack</SheetTitle>
                     <SheetDescription>{description}</SheetDescription>
@@ -113,8 +118,8 @@ export function AppShell({
           </div>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="text-sm uppercase tracking-[0.24em] text-muted-foreground">FastTrack App</p>
-              <h1 className="mt-2 font-[family:var(--font-heading)] text-3xl font-semibold tracking-tight sm:text-4xl">
+              <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">FastTrack App</p>
+              <h1 className="mt-2 font-[family:var(--font-heading)] text-4xl font-semibold tracking-tight sm:text-[2.75rem]">
                 {title}
               </h1>
             </div>

@@ -33,8 +33,8 @@ export function HistoryView({ initialData }: HistoryViewProps) {
           { label: "Average", value: formatCompactDuration(stats.averageMinutes) },
           { label: "Longest", value: formatCompactDuration(stats.longestFast) },
           { label: "Current streak", value: `${stats.currentStreak} day${stats.currentStreak === 1 ? "" : "s"}` },
-        ].map((item) => (
-          <Card key={item.label} className="border border-border/80 bg-card/90">
+        ].map((item, index) => (
+          <Card key={item.label} className="section-enter" style={{ animationDelay: `${index * 100}ms` }}>
             <CardHeader className="pb-2">
               <CardDescription>{item.label}</CardDescription>
               <CardTitle className="font-[family:var(--font-heading)] text-3xl">{item.value}</CardTitle>
@@ -43,15 +43,15 @@ export function HistoryView({ initialData }: HistoryViewProps) {
         ))}
       </div>
 
-      <Card className="border border-border/80 bg-card/90">
+      <Card className="section-enter" style={{ animationDelay: "500ms" }}>
         <CardHeader>
-          <CardTitle className="font-[family:var(--font-heading)]">Completion trend</CardTitle>
+          <CardTitle>Completion trend</CardTitle>
           <CardDescription>Synced completed fasts from your FastTrack account.</CardDescription>
         </CardHeader>
         <CardContent>
           {chartData.length ? (
             <Tabs defaultValue="hours" className="gap-5">
-              <TabsList className="rounded-full bg-background/70">
+              <TabsList>
                 <TabsTrigger value="hours">Actual hours</TabsTrigger>
                 <TabsTrigger value="goal">Goal hours</TabsTrigger>
               </TabsList>
@@ -114,9 +114,9 @@ export function HistoryView({ initialData }: HistoryViewProps) {
         </CardContent>
       </Card>
 
-      <Card className="border border-border/80 bg-card/90">
+      <Card className="section-enter" style={{ animationDelay: "600ms" }}>
         <CardHeader>
-          <CardTitle className="font-[family:var(--font-heading)]">Recent fasts</CardTitle>
+          <CardTitle>Recent fasts</CardTitle>
           <CardDescription>Latest completed sessions, newest first.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -124,7 +124,7 @@ export function HistoryView({ initialData }: HistoryViewProps) {
             completedSessions.map((session) => (
               <div
                 key={session.id}
-                className="flex flex-col gap-3 rounded-[1.5rem] border border-border/70 bg-background/60 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                className="glass-soft flex flex-col gap-3 rounded-[1.5rem] px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div>
                   <p className="font-medium text-foreground">

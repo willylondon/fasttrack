@@ -1,6 +1,7 @@
 "use client";
 
 import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns";
+import { Activity } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,10 +48,17 @@ export function FeedView({ initialData }: FeedViewProps) {
 
   return (
     <div className="grid gap-6">
-      <Card className="border border-border/80 bg-card/90">
+      <Card className="section-enter" style={{ animationDelay: "0ms" }}>
         <CardHeader>
-          <CardTitle className="font-[family:var(--font-heading)]">Friend activity</CardTitle>
-          <CardDescription>Accepted friends are grouped into a clean rolling feed.</CardDescription>
+          <div className="flex items-center gap-3">
+            <div className="rounded-2xl bg-primary/10 p-2 text-primary shadow-[0_8px_20px_rgba(139,92,246,0.16)]">
+              <Activity className="size-4" />
+            </div>
+            <div>
+              <CardTitle>Friend activity</CardTitle>
+              <CardDescription>Accepted friends are grouped into a clean rolling feed.</CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           {Object.keys(groups).length ? (
@@ -61,7 +69,7 @@ export function FeedView({ initialData }: FeedViewProps) {
                   {events.map((event) => (
                     <div
                       key={event.id}
-                      className="flex gap-3 rounded-[1.5rem] border border-border/70 bg-background/70 px-4 py-4"
+                      className="glass-soft flex gap-3 rounded-[1.5rem] px-4 py-4"
                     >
                       <Avatar size="sm">
                         <AvatarImage src={event.actor?.avatarUrl ?? undefined} alt={event.actor?.displayName ?? "Friend"} />

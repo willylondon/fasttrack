@@ -41,10 +41,10 @@ function renderRows(entries: LeaderboardEntry[], statLabel: string) {
         <div
           key={entry.userId}
           className={cn(
-            "flex items-center justify-between gap-3 rounded-[1.5rem] border px-4 py-4",
+            "glass-soft flex items-center justify-between gap-3 rounded-[1.5rem] px-4 py-4",
             entry.isCurrentUser
               ? "border-primary/40 bg-primary/10 shadow-[0_0_0_1px_rgba(139,92,246,0.25)]"
-              : "border-border/70 bg-background/70"
+              : ""
           )}
         >
           <div className="flex items-center gap-3">
@@ -61,7 +61,7 @@ function renderRows(entries: LeaderboardEntry[], statLabel: string) {
             </div>
           </div>
           <div className="text-right">
-            <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">{entry.stat}</p>
+            <p className="font-[family:var(--font-heading)] text-3xl font-bold text-foreground">{entry.stat}</p>
             <p className="text-xs text-muted-foreground">{statLabel}</p>
           </div>
         </div>
@@ -73,11 +73,11 @@ function renderRows(entries: LeaderboardEntry[], statLabel: string) {
 export function LeaderboardView({ initialData }: LeaderboardViewProps) {
   return (
     <div className="grid gap-6">
-      <Card className="border border-border/80 bg-card/90">
+      <Card className="section-enter" style={{ animationDelay: "0ms" }}>
         <CardHeader>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <CardTitle className="font-[family:var(--font-heading)]">Leaderboard</CardTitle>
+              <CardTitle>Leaderboard</CardTitle>
               <CardDescription>Three ways to compare momentum without changing the visual feel of the app.</CardDescription>
             </div>
             <Badge variant="outline" className="border-primary/30 text-primary">
@@ -87,7 +87,7 @@ export function LeaderboardView({ initialData }: LeaderboardViewProps) {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="weekly" className="gap-5">
-            <TabsList className="rounded-full bg-background/70">
+            <TabsList>
               <TabsTrigger value="weekly">Weekly</TabsTrigger>
               <TabsTrigger value="monthly">Monthly</TabsTrigger>
               <TabsTrigger value="all-time">All Time</TabsTrigger>

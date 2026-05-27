@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import {
   Check,
@@ -30,7 +30,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Progress, ProgressLabel } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -113,6 +112,17 @@ function getStageCardState(index: number, currentIndex: number, active: boolean)
 
   return "future";
 }
+
+const CONFETTI_COLORS = ["#8B5CF6", "#A855F7", "#F59E0B", "#22C55E", "#06B6D4", "#EF4444"];
+const CONFETTI_PIECES = Array.from({ length: 26 }, (_, index) => ({
+  id: index,
+  left: `${4 + (index % 13) * 7.2}%`,
+  size: `${8 + (index % 4) * 2}px`,
+  delay: `${(index % 8) * 0.06}s`,
+  drift: `${(index % 2 === 0 ? 1 : -1) * (14 + (index % 5) * 7)}px`,
+  rotate: `${(index * 21) % 180}deg`,
+  color: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
+}));
 
 export function FastingTimer({ initialData, userId }: FastingTimerProps) {
   const [dashboardData, setDashboardData] = useState(initialData);
@@ -438,35 +448,37 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.45fr_0.95fr]">
-      <Card className="overflow-hidden border border-border/80 bg-card/90 shadow-[0_18px_70px_rgba(0,0,0,0.22)]">
-        <CardHeader className="border-b border-border/70 pb-5">
+    <div className="grid gap-8 lg:grid-cols-[1.45fr_0.95fr]">
+      <Card className="section-enter overflow-hidden" style={{ animationDelay: "0ms" }}>
+        <CardHeader className="border-b border-white/[0.08] pb-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <Badge className="mb-3 bg-primary/15 text-primary hover:bg-primary/20">Live Timer</Badge>
-              <CardTitle className="font-[family:var(--font-heading)] text-2xl">Stay inside the window</CardTitle>
+              <Badge className="mb-3">Live Timer</Badge>
+              <CardTitle>Stay inside the window</CardTitle>
               <CardDescription>
                 Start a fast, track each stage, and log the result when you finish.
               </CardDescription>
             </div>
-            <div className="rounded-full border border-border/80 bg-background/70 px-4 py-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
+            <div className="glass-soft rounded-full px-4 py-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
               Synced • Supabase-backed
             </div>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-6 pt-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <CardContent className="grid gap-8 pt-6 lg:grid-cols-[1.08fr_0.92fr]">
           <div className="flex flex-col items-center justify-center gap-6">
             <TimerRing
-              label={activeSession ? currentStage.label : "Ready"}
+              active={Boolean(activeSession)}
+              elapsedMinutes={elapsedMinutes}
               plannedMinutes={activeSession?.plannedMinutes ?? plannedMinutes}
               progress={activeSession ? progress : 0}
+              stage={currentStage}
             />
             <div className="text-center">
               <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Elapsed</p>
-              <p className="mt-3 font-[family:var(--font-mono)] text-4xl font-semibold sm:text-5xl">
+              <p className="mt-3 font-[family:var(--font-heading)] text-4xl font-bold tracking-tight sm:text-5xl">
                 {formatDuration(elapsedMinutes)}
               </p>
-              <p className="mt-3 text-sm text-muted-foreground">
+              <p className="mt-3 text-base text-muted-foreground">
                 {activeSession
                   ? `${currentStage.emoji} ${currentStage.label} at ${elapsedHours.toFixed(1)}h`
                   : "Choose a plan and start when you are ready."}
@@ -474,11 +486,11 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
             </div>
           </div>
           <div className="space-y-5">
-            <div className="grid gap-3 rounded-[1.5rem] border border-border/70 bg-background/70 p-4">
-              <label className="text-sm font-medium text-foreground">Planned duration</label>
+            <div className="glass-soft grid gap-4 rounded-[1.5rem] p-4">
+              <label className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Planned duration</label>
               <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_140px]">
                 <Select value={selectedPreset} onValueChange={(value) => setSelectedPreset(value as typeof selectedPreset)}>
-                  <SelectTrigger className="h-11 w-full rounded-2xl border-border/80 bg-card">
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select a fasting window" />
                   </SelectTrigger>
                   <SelectContent>
@@ -489,11 +501,8 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
                     ))}
                   </SelectContent>
                 </Select>
-                <input
-                  className={cn(
-                    "h-11 rounded-2xl border border-border/80 bg-card px-4 text-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/30",
-                    selectedPreset !== "Custom" && "opacity-50"
-                  )}
+                <Input
+                  className={cn(selectedPreset !== "Custom" && "opacity-50")}
                   disabled={selectedPreset !== "Custom"}
                   inputMode="numeric"
                   max={48}
@@ -507,13 +516,13 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
               </p>
             </div>
 
-            <div className="grid gap-3 rounded-[1.5rem] border border-border/70 bg-background/70 p-4">
+            <div className="glass-soft grid gap-3 rounded-[1.5rem] p-4">
               <div className="flex items-center justify-between gap-3">
-                <label className="text-sm font-medium text-foreground">Session note</label>
+                <label className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Session note</label>
                 <span className="text-xs text-muted-foreground">Saved at finish</span>
               </div>
               <Textarea
-                className="min-h-24 rounded-2xl border-border/80 bg-card"
+                className="min-h-24"
                 onChange={(event) => setSessionNotes(event.target.value)}
                 placeholder="Energy, cravings, or what helped today..."
                 value={sessionNotes}
@@ -521,11 +530,11 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
-              <Button className="h-11 rounded-2xl" disabled={isMutatingFast} onClick={startFast}>
+              <Button className="h-11" disabled={isMutatingFast} onClick={startFast}>
                 Start
               </Button>
               <Button
-                className="h-11 rounded-2xl"
+                className="h-11"
                 disabled={!activeSession || isMutatingFast}
                 onClick={() => setPendingAction("complete")}
                 variant="secondary"
@@ -533,7 +542,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
                 End
               </Button>
               <Button
-                className="h-11 rounded-2xl"
+                className="h-11"
                 disabled={!activeSession || isMutatingFast}
                 onClick={() => setPendingAction("cancel")}
                 variant="destructive"
@@ -542,11 +551,11 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
               </Button>
             </div>
 
-            <div className="rounded-[1.5rem] border border-border/70 bg-background/70 p-4">
+            <div className="glass-soft rounded-[1.5rem] p-4">
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-foreground">Fasting stages</p>
-                  <p className="text-sm text-muted-foreground">Real milestone science mapped across the clock.</p>
+                  <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Fasting stages</p>
+                  <p className="mt-2 text-sm text-muted-foreground">Real milestone science mapped across the clock.</p>
                 </div>
                 <Badge
                   variant="outline"
@@ -556,13 +565,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
                   {currentStage.emoji} {currentStage.label}
                 </Badge>
               </div>
-              <Progress value={activeSession ? progress : 0}>
-                <ProgressLabel>Goal progress</ProgressLabel>
-                <span className="ml-auto text-sm text-muted-foreground tabular-nums">
-                  {activeSession ? `${progress}%` : "0%"}
-                </span>
-              </Progress>
-              <div className="mt-4 grid gap-3">
+              <div className="-mx-1 mt-4 flex gap-3 overflow-x-auto px-1 pb-2">
                 {FASTING_STAGES.map((stage, index) => {
                   const state = getStageCardState(index, currentStageIndex, Boolean(activeSession));
                   const isCurrent = state === "current";
@@ -572,17 +575,17 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
                     <div
                       key={stage.hour}
                       className={cn(
-                        "rounded-2xl border px-4 py-3 transition-all",
-                        state === "future" && "border-border/60 bg-card/60 text-muted-foreground opacity-45",
-                        isCompleted && "border-border/70 bg-background/55 text-muted-foreground opacity-70",
+                        "min-w-[170px] rounded-[1.4rem] border px-4 py-3 transition-all duration-500",
+                        state === "future" && "border-white/[0.08] bg-white/[0.03] text-muted-foreground opacity-40",
+                        isCompleted && "border-white/[0.08] bg-white/[0.04] text-muted-foreground opacity-70",
                         isCurrent && "text-foreground"
                       )}
                       style={
                         isCurrent
                           ? {
                               borderColor: stage.color,
-                              backgroundColor: `${stage.color}18`,
-                              boxShadow: `0 0 0 1px ${stage.color}40, 0 0 24px ${stage.color}25`,
+                              backgroundColor: `${stage.color}1c`,
+                              boxShadow: `0 0 0 1px ${stage.color}4d, 0 0 28px ${stage.color}4d`,
                             }
                           : undefined
                       }
@@ -591,16 +594,19 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
                         <span className="font-[family:var(--font-heading)] text-sm font-medium">
                           {formatStageHour(stage.hour)}
                         </span>
-                        <span className="text-sm">
-                          {stage.emoji} {stage.label}
+                        <span className="flex items-center gap-2 text-sm">
+                          {isCompleted ? <Check className="size-3.5 text-accent" /> : null}
+                          <span>{stage.emoji}</span>
                         </span>
                       </div>
+                      <p className="mt-3 text-sm font-medium text-foreground">{stage.label}</p>
                     </div>
                   );
                 })}
               </div>
               <div
-                className="mt-4 rounded-[1.25rem] border px-4 py-4 text-sm"
+                key={currentStage.hour}
+                className="animate-stage-copy mt-4 rounded-[1.4rem] border px-4 py-4 text-sm"
                 style={{
                   borderColor: `${currentStage.color}55`,
                   backgroundColor: `${currentStage.color}12`,
@@ -624,10 +630,10 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
         </CardFooter>
       </Card>
 
-      <div className="grid gap-6">
-        <Card className="border border-border/80 bg-card/90">
+      <div className="grid gap-8">
+        <Card className="section-enter" style={{ animationDelay: "100ms" }}>
           <CardHeader>
-            <CardTitle className="font-[family:var(--font-heading)]">Quick stats</CardTitle>
+            <CardTitle>Quick stats</CardTitle>
             <CardDescription>Your synced FastTrack snapshot.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
@@ -637,24 +643,24 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
               { label: "Average", value: formatCompactDuration(stats.averageMinutes), icon: PauseCircle },
               { label: "Current streak", value: `${stats.currentStreak} day${stats.currentStreak === 1 ? "" : "s"}`, icon: Trophy },
             ].map((item) => (
-              <div key={item.label} className="flex items-center justify-between rounded-2xl border border-border/70 bg-background/70 px-4 py-3">
+              <div key={item.label} className="glass-soft flex items-center justify-between rounded-[1.4rem] px-4 py-3">
                 <div className="flex items-center gap-3">
-                  <div className="rounded-2xl bg-primary/10 p-2 text-primary">
+                  <div className="rounded-2xl bg-primary/10 p-2 text-primary shadow-[0_8px_20px_rgba(139,92,246,0.16)]">
                     <item.icon className="size-4" />
                   </div>
-                  <span className="text-sm text-muted-foreground">{item.label}</span>
+                  <span className="text-xs uppercase tracking-[0.22em] text-muted-foreground">{item.label}</span>
                 </div>
-                <span className="font-[family:var(--font-heading)] text-lg font-semibold">{item.value}</span>
+                <span className="font-[family:var(--font-heading)] text-3xl font-bold">{item.value}</span>
               </div>
             ))}
           </CardContent>
         </Card>
 
-        <Card className="border border-border/80 bg-card/90">
+        <Card className="section-enter" style={{ animationDelay: "200ms" }}>
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <div>
-                <CardTitle className="font-[family:var(--font-heading)]">Friend feed</CardTitle>
+                <CardTitle>Friend feed</CardTitle>
                 <CardDescription>Invite friends, accept requests, and see shared momentum.</CardDescription>
               </div>
               <Badge variant="outline" className="border-primary/30 text-primary">
@@ -664,16 +670,15 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3 rounded-[1.5rem] border border-border/70 bg-background/70 p-4">
-              <label className="text-sm font-medium text-foreground">Invite by email</label>
+            <div className="glass-soft grid gap-3 rounded-[1.5rem] p-4">
+              <label className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Invite by email</label>
               <div className="flex gap-2">
                 <Input
-                  className="h-11 rounded-2xl border-border/80 bg-card"
                   onChange={(event) => setInviteEmail(event.target.value)}
                   placeholder="friend@example.com"
                   value={inviteEmail}
                 />
-                <Button className="h-11 rounded-2xl px-4" disabled={isInviting} onClick={sendFriendRequest}>
+                <Button className="h-11 px-4" disabled={isInviting} onClick={sendFriendRequest}>
                   <UserPlus className="size-4" />
                 </Button>
               </div>
@@ -688,12 +693,12 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
             </div>
 
             {dashboardData.pendingRequests.length ? (
-              <div className="space-y-3 rounded-[1.5rem] border border-border/70 bg-background/70 p-4">
-                <p className="text-sm font-medium text-foreground">Pending requests</p>
+              <div className="glass-soft space-y-3 rounded-[1.5rem] p-4">
+                <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Pending requests</p>
                 {dashboardData.pendingRequests.map((request) => (
                   <div
                     key={request.id}
-                    className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card/80 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    className="glass-soft flex flex-col gap-3 rounded-[1.35rem] px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="flex items-center gap-3">
                       <Avatar size="sm">
@@ -707,7 +712,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
                     </div>
                     <div className="flex items-center gap-2">
                       <Button
-                        className="h-9 rounded-xl px-3"
+                        className="h-9 px-3"
                         disabled={friendActionId === request.id}
                         onClick={() => respondToRequest(request.id, "accepted")}
                         size="sm"
@@ -717,7 +722,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
                         Accept
                       </Button>
                       <Button
-                        className="h-9 rounded-xl px-3"
+                        className="h-9 px-3"
                         disabled={friendActionId === request.id}
                         onClick={() => respondToRequest(request.id, "rejected")}
                         size="sm"
@@ -737,7 +742,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
                 dashboardData.feed.slice(0, 4).map((event) => (
                   <div
                     key={event.id}
-                    className="flex gap-3 rounded-[1.5rem] border border-border/70 bg-background/70 px-4 py-4"
+                    className="glass-soft flex gap-3 rounded-[1.5rem] px-4 py-4"
                   >
                     <Avatar size="sm">
                       <AvatarImage src={event.actor?.avatarUrl ?? undefined} alt={event.actor?.displayName ?? "Friend"} />
@@ -758,7 +763,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
               )}
             </div>
 
-            <Button className="w-full rounded-2xl" disabled={isRefreshing} onClick={() => void refreshDashboard()}>
+            <Button className="w-full" disabled={isRefreshing} onClick={() => void refreshDashboard()}>
               {isRefreshing ? "Refreshing..." : "Refresh feed"}
             </Button>
           </CardContent>
@@ -766,7 +771,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
       </div>
 
       <Dialog open={pendingAction !== null} onOpenChange={(open) => setPendingAction(open ? pendingAction : null)}>
-        <DialogContent className="border border-border/80 bg-card">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>{pendingAction === "complete" ? "Finish this fast?" : "Cancel this fast?"}</DialogTitle>
             <DialogDescription>
@@ -775,7 +780,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
                 : "This will stop the active timer and log it as cancelled."}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="border-t border-border/70 bg-muted/30">
+          <DialogFooter>
             <Button onClick={() => setPendingAction(null)} variant="outline">
               Keep going
             </Button>
@@ -793,7 +798,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
         open={activeMilestoneIndex !== null}
         onOpenChange={(open) => setActiveMilestoneIndex(open ? activeMilestoneIndex : null)}
       >
-        <DialogContent className="border border-border/80 bg-card">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>
               {activeMilestoneIndex !== null
@@ -807,85 +812,122 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
             </DialogDescription>
           </DialogHeader>
           {activeMilestoneIndex !== null ? (
-            <div
-              className="rounded-[1.5rem] border px-4 py-4 text-sm text-muted-foreground"
-              style={{
-                borderColor: FASTING_STAGES[activeMilestoneIndex].color,
-                backgroundColor: `${FASTING_STAGES[activeMilestoneIndex].color}12`,
-              }}
-            >
-              {FASTING_STAGES[activeMilestoneIndex].description}
+            <div className="pointer-events-none absolute inset-x-5 top-0 h-56 overflow-hidden">
+              {CONFETTI_PIECES.map((piece) => (
+                <span
+                  key={piece.id}
+                  className="confetti-piece"
+                  style={
+                    {
+                      "--confetti-left": piece.left,
+                      "--confetti-size": piece.size,
+                      "--confetti-delay": piece.delay,
+                      "--confetti-drift": piece.drift,
+                      "--confetti-rotate": piece.rotate,
+                      "--confetti-color": piece.color,
+                    } as CSSProperties
+                  }
+                />
+              ))}
             </div>
           ) : null}
-          <DialogFooter className="border-t border-border/70 bg-muted/30">
+          {activeMilestoneIndex !== null ? (
+            <div
+              className="animate-pop-in rounded-[1.5rem] border px-4 py-4 text-sm text-muted-foreground"
+              style={{
+                borderColor: FASTING_STAGES[activeMilestoneIndex].color,
+                backgroundColor: `${FASTING_STAGES[activeMilestoneIndex].color}18`,
+                boxShadow: `0 16px 36px ${FASTING_STAGES[activeMilestoneIndex].color}24`,
+              }}
+            >
+              <p className="text-base font-semibold text-foreground">
+                {FASTING_STAGES[activeMilestoneIndex].emoji} {FASTING_STAGES[activeMilestoneIndex].label}
+              </p>
+              <p className="mt-3">{FASTING_STAGES[activeMilestoneIndex].description}</p>
+            </div>
+          ) : null}
+          <DialogFooter>
             <Button onClick={() => setActiveMilestoneIndex(null)}>Keep Going 🔥</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={completionSummary !== null} onOpenChange={(open) => setCompletionSummary(open ? completionSummary : null)}>
-        <DialogContent className="border border-border/80 bg-card">
+        <DialogContent className="animate-pop-in overflow-hidden bg-[linear-gradient(180deg,#1a1a1a_0%,#0d0d0d_100%)]">
           <DialogHeader>
-            <DialogTitle>FAST COMPLETE</DialogTitle>
+            <DialogTitle className="text-center text-xs uppercase tracking-[0.36em] text-muted-foreground">
+              Fast Complete
+            </DialogTitle>
             <DialogDescription>Your latest result is saved and ready to share.</DialogDescription>
           </DialogHeader>
           {completionSummary ? (
-            <div className="space-y-4">
-              <div className="rounded-[1.5rem] border border-primary/30 bg-primary/10 px-4 py-5">
-                <p className="font-[family:var(--font-heading)] text-3xl font-semibold text-foreground">
+            <div className="space-y-5">
+              <div className="flex flex-col items-center text-center">
+                <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-gradient-to-br from-primary/90 to-[#b46cff] shadow-[0_16px_34px_rgba(139,92,246,0.3)]">
+                  <span className="text-3xl">{completionSummary.stage.emoji}</span>
+                </div>
+                <p className="font-[family:var(--font-heading)] text-4xl font-bold text-foreground">
                   {formatDuration(completionSummary.durationMinutes)}
                 </p>
-                <p className="mt-2 text-sm text-muted-foreground">
+                <p className="mt-2 text-base text-muted-foreground">
                   Reached {completionSummary.stage.emoji} {completionSummary.stage.label}
                 </p>
-                <p className="mt-2 text-sm font-medium text-primary">+{completionSummary.xpGained} XP</p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-[1.25rem] border border-border/70 bg-background/70 px-4 py-4">
+              <div className="glass-soft grid gap-4 rounded-[1.5rem] px-4 py-4 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">XP gained</p>
+                  <p className="mt-2 font-[family:var(--font-heading)] text-3xl font-bold text-foreground">
+                    +{completionSummary.xpGained}
+                  </p>
+                </div>
+                <div>
                   <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Current streak</p>
-                  <p className="mt-2 font-[family:var(--font-heading)] text-2xl font-semibold text-foreground">
+                  <p className="mt-2 font-[family:var(--font-heading)] text-3xl font-bold text-foreground">
                     {completionSummary.currentStreak}
                   </p>
                 </div>
-                <div className="rounded-[1.25rem] border border-border/70 bg-background/70 px-4 py-4">
-                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Total fasts</p>
-                  <p className="mt-2 font-[family:var(--font-heading)] text-2xl font-semibold text-foreground">
-                    {completionSummary.totalFasts}
-                  </p>
-                </div>
+              </div>
+              <div className="glass-soft rounded-[1.5rem] px-4 py-4">
+                <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Total fasts</p>
+                <p className="mt-2 font-[family:var(--font-heading)] text-3xl font-bold text-foreground">
+                  {completionSummary.totalFasts}
+                </p>
               </div>
               {completionSummary.badges.length ? (
-                <div className="rounded-[1.25rem] border border-border/70 bg-background/70 px-4 py-4">
+                <div className="glass-soft rounded-[1.5rem] px-4 py-4">
                   <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Badges earned</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-3 space-y-2">
                     {completionSummary.badges.map((badge) => (
-                      <Badge key={badge.id} className="bg-primary/15 text-primary hover:bg-primary/20">
-                        {badge.icon} {badge.name}
-                      </Badge>
+                      <div key={badge.id} className="flex items-center justify-between rounded-[1.1rem] bg-white/[0.05] px-3 py-3">
+                        <p className="text-sm font-medium text-foreground">
+                          {badge.icon} {badge.name}
+                        </p>
+                        <Badge className="bg-primary/15 text-primary hover:bg-primary/20">Earned</Badge>
+                      </div>
                     ))}
                   </div>
                 </div>
               ) : null}
             </div>
           ) : null}
-          <DialogFooter className="border-t border-border/70 bg-muted/30">
+          <DialogFooter>
             <Button onClick={() => void shareCompletion()} variant="secondary">
               <Share2 className="mr-2 size-4" />
               Share Result
             </Button>
-            <Button onClick={() => setCompletionSummary(null)}>Close</Button>
+            <Button onClick={() => setCompletionSummary(null)}>Done</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={levelUpSummary !== null} onOpenChange={(open) => setLevelUpSummary(open ? levelUpSummary : null)}>
-        <DialogContent className="border border-border/80 bg-card">
+        <DialogContent className="animate-pop-in">
           <DialogHeader>
             <DialogTitle>LEVEL UP</DialogTitle>
             <DialogDescription>Your discipline just pushed you into a new tier.</DialogDescription>
           </DialogHeader>
           {levelUpSummary ? (
-            <div className="rounded-[1.5rem] border border-primary/30 bg-primary/10 px-4 py-5">
+            <div className="glass-soft rounded-[1.5rem] border border-primary/30 px-4 py-5">
               <p className="font-[family:var(--font-heading)] text-3xl font-semibold text-foreground">
                 Level {levelUpSummary.previousLevel} → Level {levelUpSummary.newLevel}
               </p>
@@ -894,7 +936,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
               </p>
             </div>
           ) : null}
-          <DialogFooter className="border-t border-border/70 bg-muted/30">
+          <DialogFooter>
             <Button onClick={() => setLevelUpSummary(null)}>Keep Climbing</Button>
           </DialogFooter>
         </DialogContent>
