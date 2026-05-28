@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns";
 import Link from "next/link";
 import { Activity, ArrowRight } from "lucide-react";
@@ -9,7 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { FeedPageData, buildFeedEventCopy } from "@/lib/fasting";
+import { FeedPageData, buildFeedEventCopy, formatCompactDuration, getElapsedMinutes } from "@/lib/fasting";
 import { cn } from "@/lib/utils";
 
 type FeedViewProps = {
@@ -47,6 +48,20 @@ function getGroupLabel(date: Date) {
 }
 
 export function FeedView({ initialData, providers, signedIn }: FeedViewProps) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!initialData.liveSessions.length) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+    }, 60000);
+
+    return () => window.clearInterval(timer);
+  }, [initialData.liveSessions.length]);
+
   const groups = initialData.feed.reduce<Record<string, FeedPageData["feed"]>>((accumulator, event) => {
     const key = getGroupLabel(new Date(event.createdAt));
 
@@ -105,36 +120,69 @@ export function FeedView({ initialData, providers, signedIn }: FeedViewProps) {
                 </div>
               }
             />
-          ) : Object.keys(groups).length ? (
-            Object.entries(groups).map(([label, events]) => (
-              <section key={label} className="space-y-3">
-                <h2 className="text-xs uppercase tracking-[0.24em] text-muted-foreground">{label}</h2>
-                <div className="space-y-3">
-                  {events.map((event) => (
-                    <div
-                      key={event.id}
-                      className="glass-soft flex gap-3 rounded-[1.5rem] px-4 py-4"
-                    >
-                      <Avatar size="sm">
-                        <AvatarImage src={event.actor?.avatarUrl ?? undefined} alt={event.actor?.displayName ?? "Friend"} />
-                        <AvatarFallback>{getInitials(event.actor?.displayName)}</AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <p className="text-sm leading-6 text-foreground">{buildFeedEventCopy(event)}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatDistanceToNow(new Date(event.createdAt), { addSuffix: true })}
-                        </p>
+          ) : Object.keys(groups).length || initialData.liveSessions.length ? (
+            <>
+              {initialData.liveSessions.length ? (
+                <section className="space-y-3">
+                  <h2 className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Fasting now</h2>
+                  <div className="space-y-3">
+                    {initialData.liveSessions.map((session) => {
+                      const elapsedMinutes = getElapsedMinutes({ startedAt: session.startedAt }, now);
+
+                      return (
+                        <div
+                          key={session.userId}
+                          className="glass-soft flex gap-3 rounded-[1.5rem] px-4 py-4"
+                        >
+                          <Avatar size="sm">
+                            <AvatarImage src={session.avatarUrl ?? undefined} alt={session.displayName ?? "Friend"} />
+                            <AvatarFallback>{getInitials(session.displayName)}</AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <p className="text-sm leading-6 text-foreground">
+                              {session.displayName ?? "A friend"} is currently fasting.
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatCompactDuration(elapsedMinutes)} in • planned {formatCompactDuration(session.plannedMinutes)} • ends {format(new Date(Date.parse(session.startedAt) + session.plannedMinutes * 60000), "p")}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              ) : null}
+
+              {Object.entries(groups).map(([label, events]) => (
+                <section key={label} className="space-y-3">
+                  <h2 className="text-xs uppercase tracking-[0.24em] text-muted-foreground">{label}</h2>
+                  <div className="space-y-3">
+                    {events.map((event) => (
+                      <div
+                        key={event.id}
+                        className="glass-soft flex gap-3 rounded-[1.5rem] px-4 py-4"
+                      >
+                        <Avatar size="sm">
+                          <AvatarImage src={event.actor?.avatarUrl ?? undefined} alt={event.actor?.displayName ?? "Friend"} />
+                          <AvatarFallback>{getInitials(event.actor?.displayName)}</AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <p className="text-sm leading-6 text-foreground">{buildFeedEventCopy(event)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDistanceToNow(new Date(event.createdAt), { addSuffix: true })}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ))
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </>
           ) : (
             <EmptyState
               eyebrow="No activity yet"
               title="Your feed will come to life here."
-              description="When friends start sessions, complete planned windows, and keep streaks moving, you’ll see those updates here."
+              description="When friends start sessions, stay active, and complete planned windows, you’ll see those updates here."
               actions={
                 <>
                   <Link href="/friends" className={cn(buttonVariants({ size: "lg" }), "w-full sm:w-auto")}>

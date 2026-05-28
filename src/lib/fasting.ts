@@ -81,12 +81,21 @@ export type OutgoingFriendRequest = {
   createdAt: string;
 };
 
+export type FriendLiveSession = {
+  userId: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  startedAt: string;
+  plannedMinutes: number;
+};
+
 export type FriendListItem = {
   id: string;
   displayName: string | null;
   avatarUrl: string | null;
   currentStreak: number;
   longestStreak: number;
+  activeSession: FriendLiveSession | null;
 };
 
 export type FriendSearchResult = {
@@ -119,12 +128,14 @@ export type FeedGroup = {
 
 export type FeedPageData = {
   feed: FeedEvent[];
+  liveSessions: FriendLiveSession[];
 };
 
 export type FriendsPageData = {
   incomingRequests: FriendRequest[];
   outgoingRequests: OutgoingFriendRequest[];
   friends: FriendListItem[];
+  liveSessions: FriendLiveSession[];
 };
 
 export type BadgeDefinition = {

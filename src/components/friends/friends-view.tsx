@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 import { Check, Search, Sparkles, UserPlus, Users, X } from "lucide-react";
 import { toast } from "sonner";
@@ -13,7 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { FriendSearchResult, FriendsPageData } from "@/lib/fasting";
+import { FriendSearchResult, FriendsPageData, formatCompactDuration, getElapsedMinutes } from "@/lib/fasting";
 import { cn } from "@/lib/utils";
 
 type FriendsViewProps = {
@@ -60,10 +60,23 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
   const [isSearching, setIsSearching] = useState(false);
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
   const [searchFeedback, setSearchFeedback] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
     setFriendsData(initialData);
   }, [initialData]);
+
+  useEffect(() => {
+    if (!friendsData.liveSessions.length) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+    }, 60000);
+
+    return () => window.clearInterval(timer);
+  }, [friendsData.liveSessions.length]);
 
   async function refreshFriends() {
     const response = await fetch("/api/friends", {
@@ -399,6 +412,39 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
+          {friendsData.liveSessions.length ? (
+            <section className="space-y-3">
+              <h2 className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Fasting now</h2>
+              {friendsData.liveSessions.map((session) => {
+                const elapsedMinutes = getElapsedMinutes({ startedAt: session.startedAt }, now);
+
+                return (
+                  <div
+                    key={session.userId}
+                    className="glass-soft flex items-center justify-between gap-3 rounded-[1.5rem] px-4 py-4"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Avatar size="sm">
+                        <AvatarImage src={session.avatarUrl ?? undefined} alt={session.displayName ?? "Friend"} />
+                        <AvatarFallback>{getInitials(session.displayName)}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{session.displayName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatCompactDuration(elapsedMinutes)} in • ends {format(new Date(Date.parse(session.startedAt) + session.plannedMinutes * 60000), "p")}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs uppercase tracking-[0.2em] text-accent">In progress</p>
+                      <p className="text-xs text-muted-foreground">planned {formatCompactDuration(session.plannedMinutes)}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+          ) : null}
+
           {friendsData.friends.length ? (
             friendsData.friends.map((friend) => (
               <div
@@ -412,14 +458,29 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                   </Avatar>
                   <div>
                     <p className="text-sm font-medium text-foreground">{friend.displayName}</p>
-                    <p className="text-xs text-muted-foreground">{friend.longestStreak} day longest streak</p>
+                    <p className="text-xs text-muted-foreground">
+                      {friend.activeSession
+                        ? `Currently fasting • ${formatCompactDuration(getElapsedMinutes({ startedAt: friend.activeSession.startedAt }, now))} in`
+                        : `${friend.longestStreak} day longest streak`}
+                    </p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
-                    {friend.currentStreak}
-                  </p>
-                  <p className="text-xs text-muted-foreground">current streak</p>
+                  {friend.activeSession ? (
+                    <>
+                      <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
+                        {formatCompactDuration(friend.activeSession.plannedMinutes)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">planned window</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
+                        {friend.currentStreak}
+                      </p>
+                      <p className="text-xs text-muted-foreground">current streak</p>
+                    </>
+                  )}
                 </div>
               </div>
             ))

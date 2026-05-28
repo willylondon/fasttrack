@@ -14,6 +14,7 @@ import {
   FastSession,
   FastStatus,
   FriendListItem,
+  FriendLiveSession,
   FriendSearchResult,
   FriendRequest,
   FriendsPageData,
@@ -326,13 +327,16 @@ export async function getProfilePageData(userId: string | null | undefined): Pro
 
 export async function getFeedPageData(userId: string | null | undefined): Promise<FeedPageData> {
   if (!userId) {
-    return { feed: [] };
+    return { feed: [], liveSessions: [] };
   }
 
   const acceptedFriendIds = await getAcceptedFriendIds(userId);
-  const feed = await getFriendFeed(acceptedFriendIds, 60);
+  const [feed, liveSessions] = await Promise.all([
+    getFriendFeed(acceptedFriendIds, 60),
+    getActiveFriendSessions(acceptedFriendIds),
+  ]);
 
-  return { feed };
+  return { feed, liveSessions };
 }
 
 export async function getFriendsPageData(userId: string | null | undefined): Promise<FriendsPageData> {
@@ -341,6 +345,7 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
       incomingRequests: [],
       outgoingRequests: [],
       friends: [],
+      liveSessions: [],
     };
   }
 
@@ -383,10 +388,12 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
     item.sender_id === userId ? item.receiver_id : item.sender_id
   );
   const lookupIds = Array.from(new Set([...incomingIds, ...outgoingIds, ...friendIds]));
-  const [profilesById, emailLookup] = await Promise.all([
+  const [profilesById, emailLookup, liveSessions] = await Promise.all([
     getProfilesById(lookupIds, true),
     getEmailsById([...incomingIds, ...outgoingIds]),
+    getActiveFriendSessions(friendIds),
   ]);
+  const liveSessionLookup = new Map(liveSessions.map((session) => [session.userId, session]));
 
   const incomingRequests = (incomingResult.data ?? [])
     .map((request): FriendRequest | null => {
@@ -440,6 +447,7 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
         avatarUrl: friend.avatarUrl,
         currentStreak: friend.currentStreak ?? 0,
         longestStreak: friend.longestStreak ?? 0,
+        activeSession: liveSessionLookup.get(friend.id) ?? null,
       } satisfies FriendListItem;
     })
     .filter((friend): friend is FriendListItem => Boolean(friend))
@@ -449,6 +457,7 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
     incomingRequests,
     outgoingRequests,
     friends,
+    liveSessions,
   };
 }
 
@@ -913,6 +922,49 @@ async function getFriendFeed(friendIds: string[], limit = 20) {
   }
 
   return (feedResult.data ?? []).map((event) => mapFeedEvent(event, profileLookup.get(event.user_id) ?? null));
+}
+
+async function getActiveFriendSessions(friendIds: string[]) {
+  if (!friendIds.length) {
+    return [] satisfies FriendLiveSession[];
+  }
+
+  const supabase = createAdminClient();
+  const [sessionResult, profileLookup] = await Promise.all([
+    supabase
+      .from("fast_sessions")
+      .select("user_id,started_at,duration_planned_minutes,status")
+      .in("user_id", friendIds)
+      .eq("status", "active")
+      .order("started_at", { ascending: false }),
+    getProfilesById(friendIds),
+  ]);
+
+  if (sessionResult.error) {
+    throw sessionResult.error;
+  }
+
+  const latestByUser = new Map<string, FriendLiveSession>();
+
+  for (const session of sessionResult.data ?? []) {
+    if (latestByUser.has(session.user_id)) {
+      continue;
+    }
+
+    const profile = profileLookup.get(session.user_id);
+
+    latestByUser.set(session.user_id, {
+      userId: session.user_id,
+      displayName: profile?.displayName ?? "FastTrack friend",
+      avatarUrl: profile?.avatarUrl ?? null,
+      startedAt: session.started_at,
+      plannedMinutes: session.duration_planned_minutes,
+    });
+  }
+
+  return Array.from(latestByUser.values()).sort(
+    (left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt)
+  );
 }
 
 async function getProfilesById(userIds: string[], includeStreaks = false) {
