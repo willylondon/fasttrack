@@ -53,7 +53,7 @@ export function AppShell({
   return (
     <div className="relative min-h-screen overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.08),transparent_20%),radial-gradient(circle_at_bottom_right,rgba(34,197,94,0.08),transparent_22%)]" />
-      <div className="relative mx-auto flex min-h-screen w-full max-w-[980px] flex-col px-4 pb-0 pt-[calc(env(safe-area-inset-top)+0.75rem)] sm:px-6 sm:pt-[calc(env(safe-area-inset-top)+1rem)]">
+      <div className="relative mx-auto flex min-h-screen w-full max-w-[900px] flex-col px-4 pb-0 pt-[calc(env(safe-area-inset-top)+0.75rem)] sm:px-6 sm:pt-[calc(env(safe-area-inset-top)+1rem)]">
         <header className="glass-card rounded-[1.9rem] p-3.5 shadow-[0_20px_80px_rgba(0,0,0,0.25)] sm:p-4">
           <div className="flex items-center justify-between gap-4">
             <Link href="/" className="min-w-0">

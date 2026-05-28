@@ -23,7 +23,6 @@ import {
   DashboardData,
   EMPTY_DASHBOARD_DATA,
   FastCompletionGamification,
-  calculateStats,
   formatCompactDuration,
   formatDuration,
   formatStageHour,
@@ -194,26 +193,6 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   const currentStageIndex = getStageIndexForMinutes(elapsedMinutes);
   const currentStage = getStageForMinutes(elapsedMinutes);
   const remainingMinutes = activeSession ? Math.max(activeSession.plannedMinutes - elapsedMinutes, 0) : plannedMinutes;
-  const nextMilestone = getNextMilestone(elapsedMinutes / 60);
-  const stats = calculateStats(dashboardData.sessions, dashboardData.profile);
-  const weeklyConsistency = Math.min(
-    100,
-    Math.round(
-      (dashboardData.sessions.filter(
-        (session) =>
-          session.status === "completed" &&
-          session.endedAt &&
-          Date.parse(session.endedAt) >= Date.now() - 7 * 24 * 60 * 60 * 1000
-      ).length /
-        7) *
-        100
-    )
-  );
-  const accountStatusCopy = signedIn
-    ? activeSession
-      ? "Progress saved"
-      : "Saved to your account"
-    : "Sign in to save progress";
   const statusLabel = getStatusLabel(Boolean(activeSession), currentStage, remainingMinutes);
   const hourlyCheckIn = getHourlyCheckIn(elapsedMinutes / 60, Boolean(activeSession));
 
@@ -383,8 +362,8 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         setCompletionSummary({
           durationMinutes: finishedSession.durationMinutes ?? 0,
           stage,
-          currentStreak: nextDashboard?.profile?.currentStreak ?? stats.currentStreak,
-          totalFasts: nextDashboard?.profile?.totalFasts ?? stats.totalFasts + 1,
+          currentStreak: nextDashboard?.profile?.currentStreak ?? dashboardData.profile?.currentStreak ?? 0,
+          totalFasts: nextDashboard?.profile?.totalFasts ?? (dashboardData.profile?.totalFasts ?? 0) + 1,
           xpGained: payload.gamification?.xpGained ?? 0,
           badges: payload.gamification?.newlyEarnedBadges ?? [],
         });
@@ -425,7 +404,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <Card className="section-enter overflow-hidden" style={{ animationDelay: "0ms" }}>
         <CardContent className="space-y-6 p-4 sm:p-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-3">
             <div className="space-y-2">
               <Badge className="w-fit">Today</Badge>
               <div>
@@ -435,15 +414,10 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                 <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground sm:text-base">
                   {activeSession
                     ? "Track the window you planned, stay steady, and end the session when it matches your routine."
-                    : "Choose your window and begin when ready."}
+                  : "Choose your window and begin when ready."}
                 </p>
               </div>
             </div>
-            {signedIn ? (
-              <div className="glass-soft w-fit rounded-full px-3 py-1.5 text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
-                {accountStatusCopy}
-              </div>
-            ) : null}
           </div>
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)] lg:items-center">
@@ -505,6 +479,10 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                     <p className="text-sm text-muted-foreground">
                       Planned window: <span className="font-medium text-foreground">{formatCompactDuration(plannedMinutes)}</span>
                     </p>
+                    <div className="rounded-[1.3rem] border border-white/[0.08] bg-black/20 px-4 py-3">
+                      <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Current status</p>
+                      <p className="mt-2 text-base font-medium text-foreground">{statusLabel}</p>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -520,13 +498,6 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                     { label: "Elapsed", value: formatDuration(elapsedMinutes) },
                     { label: "Remaining", value: formatDuration(remainingMinutes) },
                     { label: "Current status", value: statusLabel, fullWidth: true },
-                    {
-                      label: "Next milestone",
-                      value: nextMilestone
-                        ? `${nextMilestone.label} · ${formatStageHour(nextMilestone.hour)}`
-                        : "Stay inside your planned window",
-                      fullWidth: true,
-                    },
                   ].map((item) => (
                     <div
                       className={cn(
@@ -580,40 +551,12 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                   </>
                 )}
               </div>
-
-              {!signedIn ? (
-                <p className="text-sm leading-6 text-muted-foreground">
-                  Sign in from the top right to save progress across your history, friends, and profile.
-                </p>
-              ) : null}
             </div>
           </div>
         </CardContent>
       </Card>
 
       <Card className="section-enter" style={{ animationDelay: "100ms" }}>
-        <CardHeader className="pb-3">
-          <CardTitle>Quick stats</CardTitle>
-          <CardDescription>A compact snapshot of your routine so far.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-3 p-4 pt-0 sm:p-6 sm:pt-0">
-          {[
-            { label: "Current streak", value: `${stats.currentStreak} day${stats.currentStreak === 1 ? "" : "s"}` },
-            { label: "Completed sessions", value: stats.totalFasts.toString() },
-            { label: "Average session", value: formatCompactDuration(stats.averageMinutes) },
-            { label: "Weekly consistency", value: `${weeklyConsistency}%` },
-          ].map((item) => (
-            <div key={item.label} className="glass-soft rounded-[1.35rem] px-4 py-4">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{item.label}</p>
-              <p className="mt-3 font-[family:var(--font-heading)] text-2xl font-semibold text-foreground sm:text-3xl">
-                {item.value}
-              </p>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card className="section-enter" style={{ animationDelay: "200ms" }}>
         <CardContent className="p-4 sm:p-6">
           <div className="glass-soft flex items-start gap-3 rounded-[1.6rem] px-4 py-4 text-sm leading-6 text-muted-foreground">
             <div className="rounded-2xl bg-amber-500/10 p-2 text-amber-300">
