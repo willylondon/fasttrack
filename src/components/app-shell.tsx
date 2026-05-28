@@ -47,7 +47,7 @@ export function AppShell({
             <Link href="/" className="min-w-0">
               <BrandMark />
             </Link>
-            <div className="hidden items-center gap-2 md:flex">
+            <div className="hidden items-center gap-2 lg:flex">
               {navItems.map((item) => (
                 <Link
                   key={item.href}
@@ -71,11 +71,11 @@ export function AppShell({
               <Separator orientation="vertical" className="mx-1 h-6" />
               <AuthButton providers={providers} user={session?.user} />
             </div>
-            <div className="flex items-center gap-2 md:hidden">
+            <div className="flex items-center gap-2 lg:hidden">
               <AuthButton providers={providers} user={session?.user} />
             </div>
           </div>
-          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="mt-4 hidden flex-col gap-3 lg:flex lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Build your streak. Track your window. Stay accountable.</p>
               <h1 className="mt-2 font-[family:var(--font-heading)] text-3xl font-semibold tracking-tight sm:text-[2.5rem]">
@@ -87,9 +87,11 @@ export function AppShell({
         </header>
         <div className="mt-4 grid gap-4">
           <OfflineNotice />
+        </div>
+        <main className="flex-1 py-6 pb-[calc(env(safe-area-inset-bottom)+7.5rem)] lg:pb-8">{children}</main>
+        <div className="pb-6">
           <InstallPrompt currentPath={currentPath} />
         </div>
-        <main className="flex-1 py-6 pb-[calc(env(safe-area-inset-bottom)+6.25rem)] md:pb-8">{children}</main>
       </div>
       <MobileNav currentPath={currentPath} />
     </div>

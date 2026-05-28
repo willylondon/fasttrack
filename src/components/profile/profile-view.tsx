@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
-import { Bell, BellOff } from "lucide-react";
+import { Bell, BellOff, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 import { SignInDialog } from "@/components/auth/sign-in-dialog";
@@ -77,6 +77,9 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
             />
             <Link href="/" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full sm:w-auto")}>
               Go to dashboard
+            </Link>
+            <Link href="/leaderboard" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full sm:w-auto")}>
+              Preview leaderboard
             </Link>
           </>
         }
@@ -189,6 +192,12 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
                 : "Notifications unavailable"}
             </Button>
           </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Link href="/leaderboard" className={cn(buttonVariants({ variant: "outline" }), "w-full sm:w-auto")}>
+              <Trophy className="mr-2 size-4" />
+              View leaderboard
+            </Link>
+          </div>
         </CardHeader>
         <CardContent className="space-y-5">
           {!notificationsReady ? (
@@ -210,12 +219,12 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                { label: "Total fasts", value: initialData.profile.totalFasts.toString() },
-                { label: "Total hours", value: initialData.profile.totalFastHours.toString() },
-                { label: "Longest saved window", value: `${initialData.profile.highestStageReached}h` },
-                { label: "Friends", value: initialData.profile.friendCount.toString() },
-              ].map((item) => (
+                {[
+                  { label: "Total fasts", value: initialData.profile.totalFasts.toString() },
+                  { label: "Total hours", value: initialData.profile.totalFastHours.toString() },
+                  { label: "Highest checkpoint", value: `${initialData.profile.highestStageReached}h` },
+                  { label: "Friends", value: initialData.profile.friendCount.toString() },
+                ].map((item) => (
               <div key={item.label} className="glass-soft rounded-[1.5rem] px-4 py-4">
                 <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">{item.label}</p>
                 <p className="mt-2 font-[family:var(--font-heading)] text-3xl font-bold text-foreground">{item.value}</p>

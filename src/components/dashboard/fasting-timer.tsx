@@ -4,6 +4,7 @@ import Link from "next/link";
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import {
+  ArrowRight,
   Check,
   Flag,
   Flame,
@@ -18,7 +19,6 @@ import {
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { SignInDialog } from "@/components/auth/sign-in-dialog";
 import { TimerRing } from "@/components/dashboard/timer-ring";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -58,10 +58,6 @@ import { cn } from "@/lib/utils";
 
 type FastingTimerProps = {
   initialData: DashboardData;
-  providers: {
-    google: boolean;
-    github: boolean;
-  };
   signedIn: boolean;
   userId?: string | null;
 };
@@ -133,7 +129,7 @@ const CONFETTI_PIECES = Array.from({ length: 26 }, (_, index) => ({
   color: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
 }));
 
-export function FastingTimer({ initialData, providers, signedIn, userId }: FastingTimerProps) {
+export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProps) {
   const [dashboardData, setDashboardData] = useState(initialData);
   const [selectedPreset, setSelectedPreset] = useState<(typeof FASTING_PRESETS)[number]["label"]>("16:8");
   const [customHours, setCustomHours] = useState("14");
@@ -176,6 +172,7 @@ export function FastingTimer({ initialData, providers, signedIn, userId }: Fasti
   const progress = getProgressPercent(activeSession, now);
   const currentStageIndex = getStageIndexForMinutes(elapsedMinutes);
   const currentStage = getCurrentStage(elapsedHours);
+  const nextStage = FASTING_STAGES[Math.min(currentStageIndex + 1, FASTING_STAGES.length - 1)];
   const stats = calculateStats(dashboardData.sessions, dashboardData.profile);
   const completedCount = dashboardData.sessions.filter((session) => session.status === "completed").length;
   const weeklyConsistency = Math.min(
@@ -293,7 +290,7 @@ export function FastingTimer({ initialData, providers, signedIn, userId }: Fasti
 
   async function startFast() {
     if (!userId) {
-      toast.error("Sign in to sync a fast across devices.");
+      toast.error("Sign in to save your progress.");
       return;
     }
 
@@ -479,11 +476,11 @@ export function FastingTimer({ initialData, providers, signedIn, userId }: Fasti
   return (
     <div className="grid gap-6 lg:grid-cols-[1.45fr_0.95fr]">
       <Card className="section-enter overflow-hidden" style={{ animationDelay: "0ms" }}>
-        <CardHeader className="border-b border-white/[0.08] pb-5">
+        <CardHeader className="hidden border-b border-white/[0.08] pb-4 md:grid">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <Badge className="mb-3">Today&apos;s window</Badge>
-              <CardTitle>Your fasting window is ready.</CardTitle>
+              <CardTitle className="text-[1.65rem] sm:text-3xl">Your fasting window is ready.</CardTitle>
               <CardDescription>
                 Start a session, follow your milestones, and keep your progress saved across your account.
               </CardDescription>
@@ -494,23 +491,87 @@ export function FastingTimer({ initialData, providers, signedIn, userId }: Fasti
           </div>
         </CardHeader>
         <CardContent className="grid gap-6 pt-6 lg:grid-cols-[1.08fr_0.92fr]">
-          <div className="flex flex-col items-center justify-center gap-6">
-            <TimerRing
-              active={Boolean(activeSession)}
-              elapsedMinutes={elapsedMinutes}
-              plannedMinutes={activeSession?.plannedMinutes ?? plannedMinutes}
-              progress={activeSession ? progress : 0}
-              stage={currentStage}
-            />
-            <div className="text-center">
+          <div className="flex flex-col items-center justify-start gap-4 lg:gap-5 lg:justify-center">
+            <div className="flex w-full items-center justify-between gap-3 md:hidden">
+              <Badge>Today&apos;s window</Badge>
+              <div className="glass-soft rounded-full px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                {accountStatusCopy}
+              </div>
+            </div>
+            <div className="glass-soft w-full rounded-[1.8rem] p-5 text-left lg:hidden">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Elapsed</p>
+                  <p className="mt-3 font-[family:var(--font-heading)] text-4xl font-bold tracking-tight text-foreground">
+                    {formatDuration(elapsedMinutes)}
+                  </p>
+                </div>
+                <div className="rounded-full border border-white/[0.08] bg-white/[0.05] px-3 py-1.5 text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                  Goal {formatCompactDuration(activeSession?.plannedMinutes ?? plannedMinutes)}
+                </div>
+              </div>
+              <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.05] px-3 py-2 text-sm text-foreground">
+                <span>{activeSession ? currentStage.emoji : "◌"}</span>
+                <span>{activeSession ? currentStage.label : "Ready when you are"}</span>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="rounded-[1.2rem] border border-white/[0.08] bg-black/20 px-3 py-3">
+                  <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Next checkpoint</p>
+                  <p className="mt-2 text-sm font-medium text-foreground">{nextStage.label}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{formatStageHour(nextStage.hour)}</p>
+                </div>
+                <div className="rounded-[1.2rem] border border-white/[0.08] bg-black/20 px-3 py-3">
+                  <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Progress</p>
+                  <p className="mt-2 text-sm font-medium text-foreground">{activeSession ? `${Math.round(progress)}%` : "0%"}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {activeSession ? "Keep this window aligned with your plan." : "Choose a window when your schedule is ready."}
+                  </p>
+                </div>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                {activeSession
+                  ? `${currentStage.label} at ${elapsedHours.toFixed(1)}h. End the session when it matches your planned window.`
+                  : "Choose a window and start when your body and schedule are ready."}
+              </p>
+            </div>
+            <div className="hidden lg:block">
+              <TimerRing
+                active={Boolean(activeSession)}
+                elapsedMinutes={elapsedMinutes}
+                plannedMinutes={activeSession?.plannedMinutes ?? plannedMinutes}
+                progress={activeSession ? progress : 0}
+                stage={currentStage}
+              />
+            </div>
+            <div className="hidden text-center lg:block">
               <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Elapsed</p>
-              <p className="mt-3 font-[family:var(--font-heading)] text-4xl font-bold tracking-tight sm:text-5xl">
+              <p className="mt-3 font-[family:var(--font-heading)] text-5xl font-bold tracking-tight">
                 {formatDuration(elapsedMinutes)}
               </p>
-              <p className="mt-3 text-base text-muted-foreground">
+              <p className="mt-4 text-sm leading-6 text-muted-foreground">
                 {activeSession
                   ? `${currentStage.emoji} ${currentStage.label} at ${elapsedHours.toFixed(1)}h`
                   : "Choose a window and start when your body and schedule are ready."}
+              </p>
+            </div>
+            <div className="glass-soft w-full rounded-[1.6rem] p-4 text-left">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Next checkpoint</p>
+                  <p className="mt-2 text-base font-medium text-foreground">
+                    {nextStage.emoji} {nextStage.label}
+                  </p>
+                </div>
+                <div className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                  {formatStageHour(nextStage.hour)}
+                </div>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                {activeSession
+                  ? nextStage.hour === currentStage.hour
+                    ? "You are at the current checkpoint. Keep the window steady and end it when it matches your plan."
+                    : `The next checkpoint arrives at ${formatStageHour(nextStage.hour)}. Pace the session and keep it aligned with your plan.`
+                  : "Your next checkpoint will appear here once a session is active."}
               </p>
             </div>
           </div>
@@ -558,40 +619,44 @@ export function FastingTimer({ initialData, providers, signedIn, userId }: Fasti
               />
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Button className="h-11 w-full" disabled={isMutatingFast} onClick={startFast}>
-                Start fast
-              </Button>
-              <Button
-                className="h-11 w-full"
-                disabled={!activeSession || isMutatingFast}
-                onClick={() => setPendingAction("complete")}
-                variant="secondary"
-              >
-                End fast
-              </Button>
-              <Button
-                className="h-11 w-full"
-                disabled={!activeSession || isMutatingFast}
-                onClick={() => setPendingAction("cancel")}
-                variant="destructive"
-              >
-                Cancel
-              </Button>
+            <div className="grid gap-3">
+              {!activeSession ? (
+                <Button className="h-12 w-full text-base font-semibold text-white" disabled={isMutatingFast} onClick={startFast} size="lg">
+                  <Flag className="size-4" />
+                  <span className="relative z-10">Start fast</span>
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    className="h-12 w-full text-base font-semibold text-white"
+                    disabled={isMutatingFast}
+                    onClick={() => setPendingAction("complete")}
+                    size="lg"
+                    variant="secondary"
+                  >
+                    <Check className="size-4" />
+                    <span className="relative z-10">End fast</span>
+                  </Button>
+                  <Button
+                    className="h-11 w-full"
+                    disabled={isMutatingFast}
+                    onClick={() => setPendingAction("cancel")}
+                    variant="ghost"
+                  >
+                    <X className="size-4" />
+                    <span className="relative z-10">Cancel session</span>
+                  </Button>
+                </>
+              )}
             </div>
             {!signedIn ? (
-              <div className="glass-soft flex flex-col gap-3 rounded-[1.5rem] p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="glass-soft flex flex-col gap-2 rounded-[1.5rem] p-4">
                 <div>
-                  <p className="text-sm font-medium text-foreground">Save this progress to your account.</p>
+                  <p className="text-sm font-medium text-foreground">Sign in from the top right to save your progress.</p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Sign in to keep your sessions, streaks, history, and friend activity in sync.
+                    Your sessions, streaks, history, and friend activity are saved once you connect your account.
                   </p>
                 </div>
-                <SignInDialog
-                  buttonClassName="w-full sm:w-auto"
-                  buttonLabel="Sign in"
-                  providers={providers}
-                />
               </div>
             ) : null}
 
@@ -680,21 +745,21 @@ export function FastingTimer({ initialData, providers, signedIn, userId }: Fasti
             <CardTitle>Quick stats</CardTitle>
             <CardDescription>A simple snapshot of your current rhythm.</CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-1">
+          <CardContent className="grid grid-cols-2 gap-3">
             {[
               { label: "Completed sessions", value: stats.totalFasts.toString(), icon: Flag },
               { label: "Weekly consistency", value: `${weeklyConsistency}%`, icon: Flame },
               { label: "Average session", value: formatCompactDuration(stats.averageMinutes), icon: PauseCircle },
               { label: "Current streak", value: `${stats.currentStreak} day${stats.currentStreak === 1 ? "" : "s"}`, icon: Trophy },
             ].map((item) => (
-              <div key={item.label} className="glass-soft flex items-center justify-between rounded-[1.4rem] px-3 py-3 sm:px-4">
+              <div key={item.label} className="glass-soft rounded-[1.4rem] px-3 py-3 sm:px-4">
                 <div className="flex items-center gap-3">
                   <div className="rounded-2xl bg-primary/10 p-2 text-primary shadow-[0_8px_20px_rgba(139,92,246,0.16)]">
                     <item.icon className="size-4" />
                   </div>
-                  <span className="text-xs uppercase tracking-[0.22em] text-muted-foreground">{item.label}</span>
+                  <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{item.label}</span>
                 </div>
-                <span className="font-[family:var(--font-heading)] text-2xl sm:text-3xl font-bold">{item.value}</span>
+                <span className="mt-3 block font-[family:var(--font-heading)] text-2xl sm:text-3xl font-bold">{item.value}</span>
               </div>
             ))}
           </CardContent>
@@ -718,12 +783,14 @@ export function FastingTimer({ initialData, providers, signedIn, userId }: Fasti
               <label className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Invite by email</label>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Input
+                  aria-label="Invite a friend by email"
                   onChange={(event) => setInviteEmail(event.target.value)}
                   placeholder="friend@example.com"
                   value={inviteEmail}
                 />
                 <Button className="h-11 w-full sm:w-auto px-4" disabled={isInviting} onClick={sendFriendRequest}>
-                  <UserPlus className="size-4" />
+                  <UserPlus className="mr-2 size-4" />
+                  Send invite
                 </Button>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
@@ -833,52 +900,50 @@ export function FastingTimer({ initialData, providers, signedIn, userId }: Fasti
                 conditions should seek qualified medical guidance before fasting.
               </p>
             </div>
+            <Link
+              href="/profile"
+              className={cn(
+                buttonVariants({ variant: "outline", size: "sm" }),
+                "mt-4 w-full justify-center sm:w-auto"
+              )}
+            >
+              Open profile
+              <ArrowRight className="ml-2 size-4" />
+            </Link>
           </CardContent>
         </Card>
       </div>
 
-      <Dialog open={pendingAction !== null} onOpenChange={(open) => setPendingAction(open ? pendingAction : null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{pendingAction === "complete" ? "Finish this fast?" : "Cancel this fast?"}</DialogTitle>
-            <DialogDescription>
-              {pendingAction === "complete"
-                ? "This will save the finished session, update your streak, and keep the result in your account."
-                : "This will stop the active timer and mark this session as cancelled."}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button onClick={() => setPendingAction(null)} variant="outline">
-              Keep going
-            </Button>
-            <Button
-              onClick={() => pendingAction && resolveSession(pendingAction)}
-              variant={pendingAction === "complete" ? "default" : "destructive"}
-            >
-              {pendingAction === "complete" ? "Save complete" : "Confirm cancel"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {pendingAction ? (
+        <Dialog open onOpenChange={(open) => setPendingAction(open ? pendingAction : null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{pendingAction === "complete" ? "Finish this fast?" : "Cancel this fast?"}</DialogTitle>
+              <DialogDescription>
+                {pendingAction === "complete"
+                  ? "This will save the finished session, update your streak, and keep the result in your account."
+                  : "This will stop the active timer and mark this session as cancelled."}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button onClick={() => setPendingAction(null)} variant="outline">
+                Keep going
+              </Button>
+              <Button onClick={() => void resolveSession(pendingAction)} variant={pendingAction === "complete" ? "default" : "destructive"}>
+                {pendingAction === "complete" ? "Save complete" : "Confirm cancel"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
-      <Dialog
-        open={activeMilestoneIndex !== null}
-        onOpenChange={(open) => setActiveMilestoneIndex(open ? activeMilestoneIndex : null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {activeMilestoneIndex !== null
-                ? `${FASTING_STAGES[activeMilestoneIndex].emoji} ${FASTING_STAGES[activeMilestoneIndex].label}`
-                : "Milestone"}
-            </DialogTitle>
-            <DialogDescription>
-              {activeMilestoneIndex !== null
-                ? `${formatStageHour(FASTING_STAGES[activeMilestoneIndex].hour)} milestone crossed.`
-                : "You just crossed a fasting checkpoint."}
-            </DialogDescription>
-          </DialogHeader>
-          {activeMilestoneIndex !== null ? (
+      {activeMilestoneIndex !== null ? (
+        <Dialog open onOpenChange={(open) => setActiveMilestoneIndex(open ? activeMilestoneIndex : null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{`${FASTING_STAGES[activeMilestoneIndex].emoji} ${FASTING_STAGES[activeMilestoneIndex].label}`}</DialogTitle>
+              <DialogDescription>{`${formatStageHour(FASTING_STAGES[activeMilestoneIndex].hour)} milestone crossed.`}</DialogDescription>
+            </DialogHeader>
             <div className="pointer-events-none absolute inset-x-5 top-0 h-56 overflow-hidden">
               {CONFETTI_PIECES.map((piece) => (
                 <span
@@ -897,8 +962,6 @@ export function FastingTimer({ initialData, providers, signedIn, userId }: Fasti
                 />
               ))}
             </div>
-          ) : null}
-          {activeMilestoneIndex !== null ? (
             <div
               className="animate-pop-in rounded-[1.5rem] border px-4 py-4 text-sm text-muted-foreground"
               style={{
@@ -912,22 +975,22 @@ export function FastingTimer({ initialData, providers, signedIn, userId }: Fasti
               </p>
               <p className="mt-3">{FASTING_STAGES[activeMilestoneIndex].description}</p>
             </div>
-          ) : null}
-          <DialogFooter>
-            <Button onClick={() => setActiveMilestoneIndex(null)}>Keep going</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              <Button onClick={() => setActiveMilestoneIndex(null)}>Keep going</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
-      <Dialog open={completionSummary !== null} onOpenChange={(open) => setCompletionSummary(open ? completionSummary : null)}>
-        <DialogContent className="animate-pop-in overflow-hidden bg-[linear-gradient(180deg,#1a1a1a_0%,#0d0d0d_100%)]">
-          <DialogHeader>
-            <DialogTitle className="text-center text-xs uppercase tracking-[0.36em] text-muted-foreground">
-              Fast Complete
-            </DialogTitle>
-            <DialogDescription>Your latest result is saved and ready to share.</DialogDescription>
-          </DialogHeader>
-          {completionSummary ? (
+      {completionSummary ? (
+        <Dialog open onOpenChange={(open) => setCompletionSummary(open ? completionSummary : null)}>
+          <DialogContent className="animate-pop-in overflow-hidden bg-[linear-gradient(180deg,#1a1a1a_0%,#0d0d0d_100%)]">
+            <DialogHeader>
+              <DialogTitle className="text-center text-xs uppercase tracking-[0.36em] text-muted-foreground">
+                Fast Complete
+              </DialogTitle>
+              <DialogDescription>Your latest result is saved and ready to share.</DialogDescription>
+            </DialogHeader>
             <div className="space-y-5">
               <div className="flex flex-col items-center text-center">
                 <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-gradient-to-br from-primary/90 to-[#b46cff] shadow-[0_16px_34px_rgba(139,92,246,0.3)]">
@@ -975,25 +1038,25 @@ export function FastingTimer({ initialData, providers, signedIn, userId }: Fasti
                   </div>
                 </div>
               ) : null}
+              <DialogFooter>
+                <Button onClick={() => void shareCompletion()} variant="secondary">
+                  <Share2 className="mr-2 size-4" />
+                  Share Result
+                </Button>
+                <Button onClick={() => setCompletionSummary(null)}>Done</Button>
+              </DialogFooter>
             </div>
-          ) : null}
-          <DialogFooter>
-            <Button onClick={() => void shareCompletion()} variant="secondary">
-              <Share2 className="mr-2 size-4" />
-              Share Result
-            </Button>
-            <Button onClick={() => setCompletionSummary(null)}>Done</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
-      <Dialog open={levelUpSummary !== null} onOpenChange={(open) => setLevelUpSummary(open ? levelUpSummary : null)}>
-        <DialogContent className="animate-pop-in">
-          <DialogHeader>
-            <DialogTitle>LEVEL UP</DialogTitle>
-            <DialogDescription>Your steady consistency just moved you into a new level.</DialogDescription>
-          </DialogHeader>
-          {levelUpSummary ? (
+      {levelUpSummary ? (
+        <Dialog open onOpenChange={(open) => setLevelUpSummary(open ? levelUpSummary : null)}>
+          <DialogContent className="animate-pop-in">
+            <DialogHeader>
+              <DialogTitle>LEVEL UP</DialogTitle>
+              <DialogDescription>Your steady consistency just moved you into a new level.</DialogDescription>
+            </DialogHeader>
             <div className="glass-soft rounded-[1.5rem] border border-primary/30 px-4 py-5">
               <p className="font-[family:var(--font-heading)] text-3xl font-semibold text-foreground">
                 Level {levelUpSummary.previousLevel} → Level {levelUpSummary.newLevel}
@@ -1002,12 +1065,12 @@ export function FastingTimer({ initialData, providers, signedIn, userId }: Fasti
                 Keep showing up for your planned windows. Your profile progress just moved.
               </p>
             </div>
-          ) : null}
-          <DialogFooter>
-            <Button onClick={() => setLevelUpSummary(null)}>Keep going</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              <Button onClick={() => setLevelUpSummary(null)}>Keep going</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </div>
   );
 }

@@ -13,16 +13,17 @@ const navItems = [
   { href: "/history", label: "Hist", icon: "📋" },
   { href: "/feed", label: "Feed", icon: "🔥" },
   { href: "/friends", label: "Fri", icon: "👥" },
-  { href: "/leaderboard", label: "Lead", icon: "🏆" },
-  { href: "/profile", label: "Prof", icon: "👤" },
+  { href: "/profile", label: "More", icon: "👤" },
 ] as const;
 
 export function MobileNav({ currentPath }: MobileNavProps) {
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.1] bg-[rgba(11,11,11,0.95)] shadow-[0_-18px_40px_rgba(0,0,0,0.28)] backdrop-blur md:hidden">
-      <div className="mx-auto grid max-w-6xl grid-cols-6 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.1] bg-[rgba(11,11,11,0.95)] shadow-[0_-18px_40px_rgba(0,0,0,0.28)] backdrop-blur lg:hidden">
+      <div className="mx-auto grid max-w-6xl grid-cols-5 gap-1 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2">
         {navItems.map((item) => {
-          const active = item.href === currentPath;
+          const active =
+            item.href === currentPath ||
+            (item.href === "/profile" && currentPath === "/leaderboard");
 
           return (
             <Link

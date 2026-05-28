@@ -23,7 +23,6 @@ export default async function Home() {
     >
       <FastingTimer
         initialData={dashboard}
-        providers={authProviders}
         signedIn={Boolean(session?.user?.id)}
         userId={session?.user?.id}
       />

@@ -174,41 +174,47 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
     }
   }
 
+  if (!signedIn) {
+    return (
+      <EmptyState
+        eyebrow="Friends"
+        title="Build your fasting circle."
+        description="Invite friends by email and stay accountable together. FastTrack keeps your circle simple, private, and useful."
+        actions={
+          <>
+            <SignInDialog
+              buttonClassName="w-full sm:w-auto"
+              buttonLabel="Sign in to save your progress"
+              providers={providers}
+              size="lg"
+            />
+            <Link href="/feed" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full sm:w-auto")}>
+              Preview the feed
+            </Link>
+          </>
+        }
+        preview={
+          <div className="space-y-3">
+            <div className="glass-soft rounded-[1.5rem] p-4">
+              <label className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Invite by email</label>
+              <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+                <Input disabled placeholder="friend@example.com" value="" />
+                <Button className="w-full sm:w-auto" disabled size="lg">
+                  Send invite
+                </Button>
+              </div>
+              <p className="mt-3 text-sm text-muted-foreground">
+                Search results, requests, and accepted friends will appear here once you sign in.
+              </p>
+            </div>
+          </div>
+        }
+      />
+    );
+  }
+
   return (
     <div className="grid gap-6">
-      {!signedIn ? (
-        <EmptyState
-          eyebrow="Friends"
-          title="Build your fasting circle."
-          description="Add trusted friends so you can see progress, stay accountable, and keep your habit social without turning it noisy."
-          actions={
-            <>
-              <SignInDialog
-                buttonClassName="w-full sm:w-auto"
-                buttonLabel="Sign in to save your progress"
-                providers={providers}
-                size="lg"
-              />
-              <Link href="/feed" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full sm:w-auto")}>
-                Preview the feed
-              </Link>
-            </>
-          }
-          preview={
-            <div className="space-y-3">
-              {[
-                "Search by name or email to invite people you know.",
-                "Incoming requests, outgoing requests, and your circle stay in one place.",
-              ].map((item) => (
-                <div key={item} className="glass-soft rounded-[1.4rem] px-4 py-4 text-sm text-muted-foreground">
-                  {item}
-                </div>
-              ))}
-            </div>
-          }
-        />
-      ) : null}
-
       <Card className="section-enter" style={{ animationDelay: "0ms" }}>
         <CardHeader>
           <div className="flex items-center gap-3">
