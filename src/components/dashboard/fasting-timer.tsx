@@ -1,29 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
-import { formatDistanceToNow } from "date-fns";
-import {
-  ArrowRight,
-  Check,
-  Flag,
-  Flame,
-  PauseCircle,
-  Share2,
-  ShieldAlert,
-  Trophy,
-  UserPlus,
-  Users,
-  X,
-} from "lucide-react";
+import { format } from "date-fns";
+import { Check, Flag, Share2, ShieldAlert, X } from "lucide-react";
 import { toast } from "sonner";
-import { z } from "zod";
 
 import { TimerRing } from "@/components/dashboard/timer-ring";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -33,17 +18,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import {
   BadgeDefinition,
   DashboardData,
   EMPTY_DASHBOARD_DATA,
-  FASTING_PRESETS,
-  FASTING_STAGES,
   FastCompletionGamification,
-  FastingStage,
-  buildFeedEventCopy,
   calculateStats,
   formatCompactDuration,
   formatDuration,
@@ -53,7 +32,7 @@ import {
   getStageForMinutes,
   getStageIndexForMinutes,
 } from "@/lib/fasting";
-import { getCurrentStage } from "@/lib/fasting-stages";
+import { FASTING_STAGES, type FastingStage } from "@/lib/fasting-stages";
 import { cn } from "@/lib/utils";
 
 type FastingTimerProps = {
@@ -78,47 +57,42 @@ type LevelUpSummary = {
   newLevel: number;
 };
 
-async function readApiError(response: Response) {
-  try {
-    const payload = (await response.json()) as { message?: string };
+const WINDOW_OPTIONS = [
+  { label: "12h", minutes: 12 * 60 },
+  { label: "14h", minutes: 14 * 60 },
+  { label: "16h", minutes: 16 * 60 },
+  { label: "Custom", minutes: 14 * 60 },
+] as const;
 
-    return payload.message || "Something went wrong.";
-  } catch {
-    return "Something went wrong.";
-  }
-}
-
-function getInitials(value?: string | null) {
-  if (!value) {
-    return "FT";
-  }
-
-  return value
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
-
-function getStageCardState(index: number, currentIndex: number, active: boolean) {
-  if (!active) {
-    return "future";
-  }
-
-  if (index === currentIndex) {
-    return "current";
-  }
-
-  if (index < currentIndex) {
-    return "completed";
-  }
-
-  return "future";
-}
+const HOURLY_CHECK_INS = [
+  "Choose a window that fits your day and begin when ready.",
+  "Use the first hour to settle in. A calm start makes the routine easier to repeat.",
+  "Keep the pace gentle. Progress comes from consistency, not urgency.",
+  "Notice how you feel and stay practical with the rest of your day.",
+  "Small check-ins help. Water, routine, and steady pacing usually go further than pressure.",
+  "If your energy feels steady, keep following the window you planned.",
+  "Stay flexible with your schedule. The goal is a repeatable habit, not a perfect streak.",
+  "A short reset can help. Step away, breathe, and let the clock do its work.",
+  "This can be a common window for many routines. Let your plan guide the session.",
+  "Keep the session measured and calm. You do not need to chase extra hours.",
+  "If you are still feeling well, stay aligned with the window you chose.",
+  "Check in with comfort, focus, and schedule before deciding what comes next.",
+  "If this matches your plan, you are right where you need to be.",
+  "Longer windows call for a little more care. Stay attentive to how you feel.",
+  "A calm finish is usually better than pushing the clock for its own sake.",
+  "If this is beyond your usual routine, consider ending at the planned time.",
+  "Consistency matters more than stretching the session longer than intended.",
+  "Use caution with longer windows and keep the plan realistic for your day.",
+  "This is an extended window. Continue only if it still feels appropriate for you.",
+  "A safe routine is the priority. Longer does not automatically mean better.",
+  "If this is outside your normal range, ending here may be the wiser choice.",
+  "Keep the focus on care, not pressure. The app is here to track, not to push.",
+  "If you have questions about longer fasting, qualified guidance matters.",
+  "The strongest routine is the one you can repeat safely and steadily.",
+  "Advanced windows deserve extra caution. End when your plan or comfort says it is time.",
+] as const;
 
 const CONFETTI_COLORS = ["#8B5CF6", "#A855F7", "#F59E0B", "#22C55E", "#06B6D4", "#EF4444"];
-const inviteSchema = z.string().trim().email("Enter a valid email address.");
 const CONFETTI_PIECES = Array.from({ length: 26 }, (_, index) => ({
   id: index,
   left: `${4 + (index % 13) * 7.2}%`,
@@ -129,21 +103,69 @@ const CONFETTI_PIECES = Array.from({ length: 26 }, (_, index) => ({
   color: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
 }));
 
+async function readApiError(response: Response) {
+  try {
+    const payload = (await response.json()) as { message?: string };
+
+    return payload.message || "Something went wrong.";
+  } catch {
+    return "Something went wrong.";
+  }
+}
+
+function getHourlyCheckIn(elapsedHours: number, active: boolean) {
+  if (!active) {
+    return HOURLY_CHECK_INS[0];
+  }
+
+  const hour = Math.max(0, Math.floor(elapsedHours));
+  return HOURLY_CHECK_INS[Math.min(hour, HOURLY_CHECK_INS.length - 1)];
+}
+
+function getStatusLabel(active: boolean, currentStage: FastingStage, remainingMinutes: number) {
+  if (!active) {
+    return "Not started";
+  }
+
+  if (remainingMinutes <= 0) {
+    return "Planned window complete";
+  }
+
+  return currentStage.label;
+}
+
+function getNextMilestone(elapsedHours: number) {
+  return FASTING_STAGES.find((stage) => stage.hour > elapsedHours) ?? null;
+}
+
+function formatTime(value: string | null) {
+  if (!value) {
+    return "—";
+  }
+
+  return format(new Date(value), "p");
+}
+
+function clampCustomHours(value: string) {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return 14;
+  }
+
+  return Math.min(24, Math.max(12, parsed));
+}
+
 export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProps) {
   const [dashboardData, setDashboardData] = useState(initialData);
-  const [selectedPreset, setSelectedPreset] = useState<(typeof FASTING_PRESETS)[number]["label"]>("16:8");
+  const [selectedWindow, setSelectedWindow] = useState<(typeof WINDOW_OPTIONS)[number]["label"]>("16h");
   const [customHours, setCustomHours] = useState("14");
   const [now, setNow] = useState(Date.now());
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
-  const [sessionNotes, setSessionNotes] = useState("");
-  const [inviteEmail, setInviteEmail] = useState("");
   const [activeMilestoneIndex, setActiveMilestoneIndex] = useState<number | null>(null);
   const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null);
   const [levelUpSummary, setLevelUpSummary] = useState<LevelUpSummary | null>(null);
   const [isMutatingFast, setIsMutatingFast] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isInviting, setIsInviting] = useState(false);
-  const [friendActionId, setFriendActionId] = useState<string | null>(null);
   const milestoneInFlightRef = useRef(false);
 
   useEffect(() => {
@@ -163,18 +185,17 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   }, [dashboardData.activeSession]);
 
   const plannedMinutes =
-    selectedPreset === "Custom"
-      ? Math.max(12, Number(customHours || "14")) * 60
-      : FASTING_PRESETS.find((preset) => preset.label === selectedPreset)?.minutes ?? 16 * 60;
+    selectedWindow === "Custom"
+      ? clampCustomHours(customHours) * 60
+      : WINDOW_OPTIONS.find((option) => option.label === selectedWindow)?.minutes ?? 16 * 60;
   const activeSession = dashboardData.activeSession;
   const elapsedMinutes = getElapsedMinutes(activeSession, now);
-  const elapsedHours = elapsedMinutes / 60;
   const progress = getProgressPercent(activeSession, now);
   const currentStageIndex = getStageIndexForMinutes(elapsedMinutes);
-  const currentStage = getCurrentStage(elapsedHours);
-  const nextStage = FASTING_STAGES[Math.min(currentStageIndex + 1, FASTING_STAGES.length - 1)];
+  const currentStage = getStageForMinutes(elapsedMinutes);
+  const remainingMinutes = activeSession ? Math.max(activeSession.plannedMinutes - elapsedMinutes, 0) : plannedMinutes;
+  const nextMilestone = getNextMilestone(elapsedMinutes / 60);
   const stats = calculateStats(dashboardData.sessions, dashboardData.profile);
-  const completedCount = dashboardData.sessions.filter((session) => session.status === "completed").length;
   const weeklyConsistency = Math.min(
     100,
     Math.round(
@@ -193,14 +214,12 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
       ? "Progress saved"
       : "Saved to your account"
     : "Sign in to save progress";
+  const statusLabel = getStatusLabel(Boolean(activeSession), currentStage, remainingMinutes);
+  const hourlyCheckIn = getHourlyCheckIn(elapsedMinutes / 60, Boolean(activeSession));
 
-  const refreshDashboard = useCallback(async (silent = false) => {
+  const refreshDashboard = useCallback(async () => {
     if (!userId) {
       return undefined;
-    }
-
-    if (!silent) {
-      setIsRefreshing(true);
     }
 
     try {
@@ -217,16 +236,9 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
       setDashboardData(nextDashboard);
       return nextDashboard;
     } catch (error) {
-      if (!silent) {
-        toast.error(error instanceof Error ? error.message : "Dashboard refresh failed.");
-      }
-    } finally {
-      if (!silent) {
-        setIsRefreshing(false);
-      }
+      toast.error(error instanceof Error ? error.message : "Dashboard refresh failed.");
+      return undefined;
     }
-
-    return undefined;
   }, [userId]);
 
   useEffect(() => {
@@ -235,7 +247,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     }
 
     const poller = window.setInterval(() => {
-      void refreshDashboard(true);
+      void refreshDashboard();
     }, 60000);
 
     return () => window.clearInterval(poller);
@@ -317,15 +329,14 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
       }
 
       const payload = (await response.json()) as { session: DashboardData["activeSession"] };
-      setSessionNotes("");
       setNow(Date.now());
       setDashboardData((current) => ({
         ...current,
         activeSession: payload.session,
         milestoneStageReached: 0,
       }));
-      await refreshDashboard(true);
-      toast.success("Window started. Progress saved.");
+      await refreshDashboard();
+      toast.success("Fast started. Progress saved.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to start fast.");
     } finally {
@@ -348,7 +359,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         },
         body: JSON.stringify({
           action,
-          notes: sessionNotes,
+          notes: "",
         }),
       });
 
@@ -363,13 +374,12 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
       const finishedSession = payload.session;
 
       setPendingAction(null);
-      setSessionNotes("");
       setActiveMilestoneIndex(null);
 
       const nextDashboard = await refreshDashboard();
 
       if (action === "complete" && finishedSession) {
-        const stage = getStageForMinutes((finishedSession.durationMinutes ?? 0) * 1);
+        const stage = getStageForMinutes(finishedSession.durationMinutes ?? 0);
         setCompletionSummary({
           durationMinutes: finishedSession.durationMinutes ?? 0,
           stage,
@@ -385,9 +395,9 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
             newLevel: payload.gamification.newLevel,
           });
         }
-        toast.success("Session complete. Progress saved.");
+        toast.success("Fast complete. Progress saved.");
       } else {
-        toast.success("Session cancelled.");
+        toast.success("Fast cancelled.");
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to update this fast.");
@@ -396,74 +406,12 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     }
   }
 
-  async function sendFriendRequest() {
-    const parsedEmail = inviteSchema.safeParse(inviteEmail);
-
-    if (!parsedEmail.success) {
-      toast.error(parsedEmail.error.issues[0]?.message ?? "Enter a valid email address.");
-      return;
-    }
-
-    setIsInviting(true);
-
-    try {
-      const response = await fetch("/api/friends", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: parsedEmail.data,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-
-      setInviteEmail("");
-      await refreshDashboard();
-      toast.success("Friend request sent.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to send friend request.");
-    } finally {
-      setIsInviting(false);
-    }
-  }
-
-  async function respondToRequest(friendshipId: string, action: "accepted" | "rejected") {
-    setFriendActionId(friendshipId);
-
-    try {
-      const response = await fetch(`/api/friends/${friendshipId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-
-      await refreshDashboard();
-      toast.success(action === "accepted" ? "Friend request accepted." : "Friend request declined.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to update friend request.");
-    } finally {
-      setFriendActionId(null);
-    }
-  }
-
   async function shareCompletion() {
     if (!completionSummary) {
       return;
     }
 
-    const shareText = `🔥 I just completed ${formatCompactDuration(completionSummary.durationMinutes)} on FastTrack! Reached: ${completionSummary.stage.label} ${completionSummary.stage.emoji} fasttrack-alpha.vercel.app`;
+    const shareText = `I just completed ${formatCompactDuration(completionSummary.durationMinutes)} on FastTrack. Reached: ${completionSummary.stage.label} ${completionSummary.stage.emoji} fasttrack-alpha.vercel.app`;
 
     try {
       await navigator.clipboard.writeText(shareText);
@@ -474,67 +422,32 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.45fr_0.95fr]">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <Card className="section-enter overflow-hidden" style={{ animationDelay: "0ms" }}>
-        <CardHeader className="hidden border-b border-white/[0.08] pb-4 md:grid">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <Badge className="mb-3">Today&apos;s window</Badge>
-              <CardTitle className="text-[1.65rem] sm:text-3xl">Your fasting window is ready.</CardTitle>
-              <CardDescription>
-                Start a session, follow your milestones, and keep your progress saved across your account.
-              </CardDescription>
+        <CardContent className="space-y-6 p-4 sm:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-2">
+              <Badge className="w-fit">Today</Badge>
+              <div>
+                <h2 className="font-[family:var(--font-heading)] text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                  {activeSession ? "Current fast" : "Ready to start"}
+                </h2>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground sm:text-base">
+                  {activeSession
+                    ? "Track the window you planned, stay steady, and end the session when it matches your routine."
+                    : "Choose your window and begin when ready."}
+                </p>
+              </div>
             </div>
-            <div className="glass-soft rounded-full px-4 py-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-              {accountStatusCopy}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="grid gap-6 pt-6 lg:grid-cols-[1.08fr_0.92fr]">
-          <div className="flex flex-col items-center justify-start gap-4 lg:gap-5 lg:justify-center">
-            <div className="flex w-full items-center justify-between gap-3 md:hidden">
-              <Badge>Today&apos;s window</Badge>
-              <div className="glass-soft rounded-full px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+            {signedIn ? (
+              <div className="glass-soft w-fit rounded-full px-3 py-1.5 text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
                 {accountStatusCopy}
               </div>
-            </div>
-            <div className="glass-soft w-full rounded-[1.8rem] p-5 text-left lg:hidden">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Elapsed</p>
-                  <p className="mt-3 font-[family:var(--font-heading)] text-4xl font-bold tracking-tight text-foreground">
-                    {formatDuration(elapsedMinutes)}
-                  </p>
-                </div>
-                <div className="rounded-full border border-white/[0.08] bg-white/[0.05] px-3 py-1.5 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                  Goal {formatCompactDuration(activeSession?.plannedMinutes ?? plannedMinutes)}
-                </div>
-              </div>
-              <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.05] px-3 py-2 text-sm text-foreground">
-                <span>{activeSession ? currentStage.emoji : "◌"}</span>
-                <span>{activeSession ? currentStage.label : "Ready when you are"}</span>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <div className="rounded-[1.2rem] border border-white/[0.08] bg-black/20 px-3 py-3">
-                  <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Next checkpoint</p>
-                  <p className="mt-2 text-sm font-medium text-foreground">{nextStage.label}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{formatStageHour(nextStage.hour)}</p>
-                </div>
-                <div className="rounded-[1.2rem] border border-white/[0.08] bg-black/20 px-3 py-3">
-                  <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Progress</p>
-                  <p className="mt-2 text-sm font-medium text-foreground">{activeSession ? `${Math.round(progress)}%` : "0%"}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {activeSession ? "Keep this window aligned with your plan." : "Choose a window when your schedule is ready."}
-                  </p>
-                </div>
-              </div>
-              <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                {activeSession
-                  ? `${currentStage.label} at ${elapsedHours.toFixed(1)}h. End the session when it matches your planned window.`
-                  : "Choose a window and start when your body and schedule are ready."}
-              </p>
-            </div>
-            <div className="hidden lg:block">
+            ) : null}
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)] lg:items-center">
+            <div className="order-1">
               <TimerRing
                 active={Boolean(activeSession)}
                 elapsedMinutes={elapsedMinutes}
@@ -543,394 +456,195 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                 stage={currentStage}
               />
             </div>
-            <div className="hidden text-center lg:block">
-              <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Elapsed</p>
-              <p className="mt-3 font-[family:var(--font-heading)] text-5xl font-bold tracking-tight">
-                {formatDuration(elapsedMinutes)}
-              </p>
-              <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                {activeSession
-                  ? `${currentStage.emoji} ${currentStage.label} at ${elapsedHours.toFixed(1)}h`
-                  : "Choose a window and start when your body and schedule are ready."}
-              </p>
-            </div>
-            <div className="glass-soft w-full rounded-[1.6rem] p-4 text-left">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Next checkpoint</p>
-                  <p className="mt-2 text-base font-medium text-foreground">
-                    {nextStage.emoji} {nextStage.label}
-                  </p>
-                </div>
-                <div className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                  {formatStageHour(nextStage.hour)}
-                </div>
-              </div>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                {activeSession
-                  ? nextStage.hour === currentStage.hour
-                    ? "You are at the current checkpoint. Keep the window steady and end it when it matches your plan."
-                    : `The next checkpoint arrives at ${formatStageHour(nextStage.hour)}. Pace the session and keep it aligned with your plan.`
-                  : "Your next checkpoint will appear here once a session is active."}
-              </p>
-            </div>
-          </div>
-          <div className="space-y-5">
-            <div className="glass-soft grid gap-4 rounded-[1.5rem] p-3 sm:p-4">
-              <label className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Planned duration</label>
-              <div className="flex flex-col gap-3 sm:grid sm:grid-cols-[minmax(0,1fr)_140px]">
-                <Select value={selectedPreset} onValueChange={(value) => setSelectedPreset(value as typeof selectedPreset)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a fasting window" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {FASTING_PRESETS.map((preset) => (
-                      <SelectItem key={preset.label} value={preset.label}>
-                        {preset.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  className={cn(selectedPreset !== "Custom" && "opacity-50")}
-                  disabled={selectedPreset !== "Custom"}
-                  inputMode="numeric"
-                  max={48}
-                  min={12}
-                  onChange={(event) => setCustomHours(event.target.value)}
-                  value={customHours}
-                />
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Goal: <span className="text-foreground">{formatCompactDuration(plannedMinutes)}</span>
-              </p>
-            </div>
 
-            <div className="glass-soft grid gap-3 rounded-[1.5rem] p-3 sm:p-4">
-              <div className="flex items-center justify-between gap-3">
-                <label className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Session note</label>
-                <span className="text-xs text-muted-foreground">Saved when you finish</span>
-              </div>
-              <Textarea
-                className="min-h-24"
-                onChange={(event) => setSessionNotes(event.target.value)}
-                placeholder="Energy, cravings, or what helped today..."
-                value={sessionNotes}
-              />
-            </div>
-
-            <div className="grid gap-3">
+            <div className="order-2 space-y-4">
               {!activeSession ? (
-                <Button className="h-12 w-full text-base font-semibold text-white" disabled={isMutatingFast} onClick={startFast} size="lg">
-                  <Flag className="size-4" />
-                  <span className="relative z-10">Start fast</span>
-                </Button>
-              ) : (
-                <>
-                  <Button
-                    className="h-12 w-full text-base font-semibold text-white"
-                    disabled={isMutatingFast}
-                    onClick={() => setPendingAction("complete")}
-                    size="lg"
-                    variant="secondary"
-                  >
-                    <Check className="size-4" />
-                    <span className="relative z-10">End fast</span>
-                  </Button>
-                  <Button
-                    className="h-11 w-full"
-                    disabled={isMutatingFast}
-                    onClick={() => setPendingAction("cancel")}
-                    variant="ghost"
-                  >
-                    <X className="size-4" />
-                    <span className="relative z-10">Cancel session</span>
-                  </Button>
-                </>
-              )}
-            </div>
-            {!signedIn ? (
-              <div className="glass-soft flex flex-col gap-2 rounded-[1.5rem] p-4">
-                <div>
-                  <p className="text-sm font-medium text-foreground">Sign in from the top right to save your progress.</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Your sessions, streaks, history, and friend activity are saved once you connect your account.
-                  </p>
-                </div>
-              </div>
-            ) : null}
+                <div className="glass-soft rounded-[1.7rem] p-4 sm:p-5">
+                  <div className="space-y-3">
+                    <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Choose a window</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {WINDOW_OPTIONS.map((option) => {
+                        const active = option.label === selectedWindow;
 
-            <div className="glass-soft rounded-[1.5rem] p-3 sm:p-4">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Fasting stages</p>
-                  <p className="mt-2 text-sm text-muted-foreground">Simple checkpoints to help you pace the window you planned.</p>
-                </div>
-                <Badge
-                  variant="outline"
-                  className="text-accent"
-                  style={{ borderColor: currentStage.color, color: currentStage.color }}
-                >
-                  {currentStage.emoji} {currentStage.label}
-                </Badge>
-              </div>
-              <div className="-mx-1 mt-4 flex gap-1 overflow-x-auto px-1 pb-2 scrollbar-none">
-                {FASTING_STAGES.map((stage, index) => {
-                  const state = getStageCardState(index, currentStageIndex, Boolean(activeSession));
-                  const isCurrent = state === "current";
-                  const isCompleted = state === "completed";
-
-                  return (
-                    <div
-                      key={stage.hour}
-                      className={cn(
-                        "min-w-[120px] sm:min-w-[170px] rounded-[1.1rem] sm:rounded-[1.4rem] border px-2.5 py-2 sm:px-4 sm:py-3 transition-all duration-500",
-                        state === "future" && "border-white/[0.08] bg-white/[0.03] text-muted-foreground opacity-40",
-                        isCompleted && "border-white/[0.08] bg-white/[0.04] text-muted-foreground opacity-70",
-                        isCurrent && "text-foreground"
-                      )}
-                      style={
-                        isCurrent
-                          ? {
-                              borderColor: stage.color,
-                              backgroundColor: `${stage.color}1c`,
-                              boxShadow: `0 0 0 1px ${stage.color}4d, 0 0 28px ${stage.color}4d`,
-                            }
-                          : undefined
-                      }
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="font-[family:var(--font-heading)] text-[10px] sm:text-sm font-medium">
-                          {formatStageHour(stage.hour)}
-                        </span>
-                        <span className="flex items-center gap-1 text-xs sm:text-sm">
-                          {isCompleted ? <Check className="size-3 text-accent sm:size-3.5" /> : null}
-                          <span className="text-xs sm:text-sm">{stage.emoji}</span>
-                        </span>
-                      </div>
-                      <p className="mt-2 text-[11px] sm:mt-3 sm:text-sm font-medium text-foreground">{stage.label}</p>
+                        return (
+                          <button
+                            aria-pressed={active}
+                            className={cn(
+                              "min-h-[48px] rounded-2xl border px-3 py-3 text-sm font-medium transition-colors",
+                              active
+                                ? "border-primary bg-primary/15 text-primary shadow-[0_12px_26px_rgba(139,92,246,0.18)]"
+                                : "border-white/[0.08] bg-white/[0.04] text-foreground hover:border-white/[0.14]"
+                            )}
+                            key={option.label}
+                            onClick={() => setSelectedWindow(option.label)}
+                            type="button"
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                    {selectedWindow === "Custom" ? (
+                      <div className="space-y-2">
+                        <label
+                          className="text-xs uppercase tracking-[0.24em] text-muted-foreground"
+                          htmlFor="custom-hours"
+                        >
+                          Custom hours
+                        </label>
+                        <Input
+                          id="custom-hours"
+                          inputMode="numeric"
+                          max={24}
+                          min={12}
+                          onChange={(event) => setCustomHours(event.target.value)}
+                          value={customHours}
+                        />
+                      </div>
+                    ) : null}
+                    <p className="text-sm text-muted-foreground">
+                      Planned window: <span className="font-medium text-foreground">{formatCompactDuration(plannedMinutes)}</span>
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {[
+                    { label: "Started", value: formatTime(activeSession.startedAt) },
+                    {
+                      label: "Ends",
+                      value: formatTime(
+                        new Date(Date.parse(activeSession.startedAt) + activeSession.plannedMinutes * 60000).toISOString()
+                      ),
+                    },
+                    { label: "Elapsed", value: formatDuration(elapsedMinutes) },
+                    { label: "Remaining", value: formatDuration(remainingMinutes) },
+                    { label: "Current status", value: statusLabel, fullWidth: true },
+                    {
+                      label: "Next milestone",
+                      value: nextMilestone
+                        ? `${nextMilestone.label} · ${formatStageHour(nextMilestone.hour)}`
+                        : "Stay inside your planned window",
+                      fullWidth: true,
+                    },
+                  ].map((item) => (
+                    <div
+                      className={cn(
+                        "glass-soft rounded-[1.4rem] px-4 py-4",
+                        item.fullWidth ? "sm:col-span-2" : undefined
+                      )}
+                      key={item.label}
+                    >
+                      <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">{item.label}</p>
+                      <p className="mt-2 text-base font-medium text-foreground sm:text-lg">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="glass-soft rounded-[1.7rem] p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Hourly check-in</p>
+                  <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                    {activeSession ? `Hour ${Math.floor(elapsedMinutes / 60)}` : "Before you start"}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-base">{hourlyCheckIn}</p>
               </div>
-              <div
-                key={currentStage.hour}
-                className="animate-stage-copy mt-4 rounded-[1.4rem] border px-4 py-4 text-sm"
-                style={{
-                  borderColor: `${currentStage.color}55`,
-                  backgroundColor: `${currentStage.color}12`,
-                }}
-              >
-                <p className="font-medium text-foreground">
-                  {currentStage.emoji} {currentStage.label}
+
+              <div className="grid gap-3">
+                {!activeSession ? (
+                  <Button className="h-12 w-full text-base font-semibold text-white" disabled={isMutatingFast} onClick={startFast} size="lg">
+                    <Flag className="size-4" />
+                    Start fast
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      className="h-12 w-full text-base font-semibold text-white"
+                      disabled={isMutatingFast}
+                      onClick={() => setPendingAction("complete")}
+                      size="lg"
+                    >
+                      <Check className="size-4" />
+                      End fast
+                    </Button>
+                    <button
+                      className="min-h-[44px] text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                      disabled={isMutatingFast}
+                      onClick={() => setPendingAction("cancel")}
+                      type="button"
+                    >
+                      Cancel fast
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {!signedIn ? (
+                <p className="text-sm leading-6 text-muted-foreground">
+                  Sign in from the top right to save progress across your history, friends, and profile.
                 </p>
-                <p className="mt-2 text-muted-foreground">{currentStage.description}</p>
-              </div>
+              ) : null}
             </div>
           </div>
         </CardContent>
-        <CardFooter className="flex flex-col items-start gap-2 border-t border-border/70 bg-background/50 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <span>{signedIn ? "Progress saved." : "Sign in to save progress."}</span>
-          <span>
-            {completedCount
-              ? `${completedCount} completed session${completedCount === 1 ? "" : "s"} saved so far.`
-              : "Your history starts after the first completed session."}
-          </span>
-        </CardFooter>
       </Card>
 
-      <div className="grid gap-6">
-        <Card className="section-enter" style={{ animationDelay: "100ms" }}>
-          <CardHeader>
-            <CardTitle>Quick stats</CardTitle>
-            <CardDescription>A simple snapshot of your current rhythm.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-3">
-            {[
-              { label: "Completed sessions", value: stats.totalFasts.toString(), icon: Flag },
-              { label: "Weekly consistency", value: `${weeklyConsistency}%`, icon: Flame },
-              { label: "Average session", value: formatCompactDuration(stats.averageMinutes), icon: PauseCircle },
-              { label: "Current streak", value: `${stats.currentStreak} day${stats.currentStreak === 1 ? "" : "s"}`, icon: Trophy },
-            ].map((item) => (
-              <div key={item.label} className="glass-soft rounded-[1.4rem] px-3 py-3 sm:px-4">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-2xl bg-primary/10 p-2 text-primary shadow-[0_8px_20px_rgba(139,92,246,0.16)]">
-                    <item.icon className="size-4" />
-                  </div>
-                  <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{item.label}</span>
-                </div>
-                <span className="mt-3 block font-[family:var(--font-heading)] text-2xl sm:text-3xl font-bold">{item.value}</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card className="section-enter" style={{ animationDelay: "200ms" }}>
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <CardTitle>Friend feed</CardTitle>
-                <CardDescription>Invite friends, accept requests, and keep accountability close without making it noisy.</CardDescription>
-              </div>
-              <Badge variant="outline" className="border-primary/30 text-primary">
-                <Users className="mr-2 size-3.5" />
-                {dashboardData.acceptedFriendsCount} connected
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="glass-soft grid gap-3 rounded-[1.5rem] p-3 sm:p-4">
-              <label className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Invite by email</label>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  aria-label="Invite a friend by email"
-                  onChange={(event) => setInviteEmail(event.target.value)}
-                  placeholder="friend@example.com"
-                  value={inviteEmail}
-                />
-                <Button className="h-11 w-full sm:w-auto px-4" disabled={isInviting} onClick={sendFriendRequest}>
-                  <UserPlus className="mr-2 size-4" />
-                  Send invite
-                </Button>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Link href="/feed" className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "w-full justify-center rounded-xl sm:w-auto")}>
-                  Open Feed
-                </Link>
-                <Link href="/friends" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-full justify-center rounded-xl sm:w-auto")}>
-                  Open Friends
-                </Link>
-              </div>
-            </div>
-
-            {dashboardData.pendingRequests.length ? (
-              <div className="glass-soft space-y-3 rounded-[1.5rem] p-4">
-                <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Pending requests</p>
-                {dashboardData.pendingRequests.map((request) => (
-                  <div
-                    key={request.id}
-                    className="glass-soft flex flex-col gap-3 rounded-[1.35rem] px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Avatar size="sm">
-                        <AvatarImage src={request.sender.avatarUrl ?? undefined} alt={request.sender.displayName ?? "Friend"} />
-                        <AvatarFallback>{getInitials(request.sender.displayName)}</AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{request.sender.displayName ?? request.sender.email}</p>
-                        <p className="text-xs text-muted-foreground">{request.sender.email ?? "FastTrack member"}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        className="h-9 px-3"
-                        disabled={friendActionId === request.id}
-                        onClick={() => respondToRequest(request.id, "accepted")}
-                        size="sm"
-                        variant="secondary"
-                      >
-                        <Check className="mr-1 size-4" />
-                        Accept
-                      </Button>
-                      <Button
-                        className="h-9 px-3"
-                        disabled={friendActionId === request.id}
-                        onClick={() => respondToRequest(request.id, "rejected")}
-                        size="sm"
-                        variant="ghost"
-                      >
-                        <X className="mr-1 size-4" />
-                        Decline
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            <div className="space-y-3">
-              {!signedIn ? (
-                <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/60 px-5 py-12 text-center text-sm text-muted-foreground">
-                  Sign in to save progress and follow your accountability circle here.
-                </div>
-              ) : dashboardData.feed.length ? (
-                dashboardData.feed.slice(0, 4).map((event) => (
-                  <div
-                    key={event.id}
-                    className="glass-soft flex gap-3 rounded-[1.5rem] px-4 py-4"
-                  >
-                    <Avatar size="sm">
-                      <AvatarImage src={event.actor?.avatarUrl ?? undefined} alt={event.actor?.displayName ?? "Friend"} />
-                      <AvatarFallback>{getInitials(event.actor?.displayName)}</AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 space-y-1">
-                      <p className="text-sm leading-6 text-foreground">{buildFeedEventCopy(event)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(event.createdAt), { addSuffix: true })}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/60 px-5 py-12 text-center text-sm text-muted-foreground">
-                  Friend updates will appear here once your circle starts sharing progress.
-                </div>
-              )}
-            </div>
-
-            <Button className="w-full" disabled={isRefreshing} onClick={() => void refreshDashboard()}>
-              {isRefreshing ? "Refreshing..." : "Refresh feed"}
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="section-enter" style={{ animationDelay: "300ms" }}>
-          <CardHeader>
-            <CardTitle>Use FastTrack responsibly</CardTitle>
-            <CardDescription>FastTrack is built for tracking and accountability, not medical advice.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="glass-soft flex items-start gap-3 rounded-[1.5rem] px-4 py-4 text-sm leading-6 text-muted-foreground">
-              <div className="rounded-2xl bg-amber-500/10 p-2 text-amber-300">
-                <ShieldAlert className="size-4" />
-              </div>
-              <p>
-                FastTrack is a tracking tool, not medical advice. Fasting may not be appropriate for everyone.
-                People under 18, pregnant users, users with diabetes, eating-disorder history, or medical
-                conditions should seek qualified medical guidance before fasting.
+      <Card className="section-enter" style={{ animationDelay: "100ms" }}>
+        <CardHeader className="pb-3">
+          <CardTitle>Quick stats</CardTitle>
+          <CardDescription>A compact snapshot of your routine so far.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-3 p-4 pt-0 sm:p-6 sm:pt-0">
+          {[
+            { label: "Current streak", value: `${stats.currentStreak} day${stats.currentStreak === 1 ? "" : "s"}` },
+            { label: "Completed sessions", value: stats.totalFasts.toString() },
+            { label: "Average session", value: formatCompactDuration(stats.averageMinutes) },
+            { label: "Weekly consistency", value: `${weeklyConsistency}%` },
+          ].map((item) => (
+            <div key={item.label} className="glass-soft rounded-[1.35rem] px-4 py-4">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{item.label}</p>
+              <p className="mt-3 font-[family:var(--font-heading)] text-2xl font-semibold text-foreground sm:text-3xl">
+                {item.value}
               </p>
             </div>
-            <Link
-              href="/profile"
-              className={cn(
-                buttonVariants({ variant: "outline", size: "sm" }),
-                "mt-4 w-full justify-center sm:w-auto"
-              )}
-            >
-              Open profile
-              <ArrowRight className="ml-2 size-4" />
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card className="section-enter" style={{ animationDelay: "200ms" }}>
+        <CardContent className="p-4 sm:p-6">
+          <div className="glass-soft flex items-start gap-3 rounded-[1.6rem] px-4 py-4 text-sm leading-6 text-muted-foreground">
+            <div className="rounded-2xl bg-amber-500/10 p-2 text-amber-300">
+              <ShieldAlert className="size-4" />
+            </div>
+            <p>
+              FastTrack is a tracking tool, not medical advice. Fasting may not be appropriate for everyone. People
+              under 18, pregnant users, users with diabetes, eating-disorder history, or medical conditions should
+              seek qualified medical guidance before fasting.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       {pendingAction ? (
         <Dialog open onOpenChange={(open) => setPendingAction(open ? pendingAction : null)}>
-          <DialogContent>
+          <DialogContent className="mx-2 max-w-[calc(100vw-1rem)] sm:mx-auto sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle>{pendingAction === "complete" ? "Finish this fast?" : "Cancel this fast?"}</DialogTitle>
+              <DialogTitle>{pendingAction === "complete" ? "End this fast?" : "Cancel this fast?"}</DialogTitle>
               <DialogDescription>
                 {pendingAction === "complete"
-                  ? "This will save the finished session, update your streak, and keep the result in your account."
+                  ? "This will save the finished session and update your account."
                   : "This will stop the active timer and mark this session as cancelled."}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button onClick={() => setPendingAction(null)} variant="outline">
-                Keep going
+                Keep current
               </Button>
               <Button onClick={() => void resolveSession(pendingAction)} variant={pendingAction === "complete" ? "default" : "destructive"}>
-                {pendingAction === "complete" ? "Save complete" : "Confirm cancel"}
+                {pendingAction === "complete" ? "End fast" : "Confirm cancel"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -939,10 +653,10 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
 
       {activeMilestoneIndex !== null ? (
         <Dialog open onOpenChange={(open) => setActiveMilestoneIndex(open ? activeMilestoneIndex : null)}>
-          <DialogContent>
+          <DialogContent className="mx-2 max-w-[calc(100vw-1rem)] overflow-hidden sm:mx-auto sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>{`${FASTING_STAGES[activeMilestoneIndex].emoji} ${FASTING_STAGES[activeMilestoneIndex].label}`}</DialogTitle>
-              <DialogDescription>{`${formatStageHour(FASTING_STAGES[activeMilestoneIndex].hour)} milestone crossed.`}</DialogDescription>
+              <DialogDescription>{`${formatStageHour(FASTING_STAGES[activeMilestoneIndex].hour)} check-in reached.`}</DialogDescription>
             </DialogHeader>
             <div className="pointer-events-none absolute inset-x-5 top-0 h-56 overflow-hidden">
               {CONFETTI_PIECES.map((piece) => (
@@ -984,7 +698,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
 
       {completionSummary ? (
         <Dialog open onOpenChange={(open) => setCompletionSummary(open ? completionSummary : null)}>
-          <DialogContent className="animate-pop-in overflow-hidden bg-[linear-gradient(180deg,#1a1a1a_0%,#0d0d0d_100%)]">
+          <DialogContent className="animate-pop-in mx-2 max-w-[calc(100vw-1rem)] overflow-hidden bg-[linear-gradient(180deg,#1a1a1a_0%,#0d0d0d_100%)] sm:mx-auto sm:max-w-lg">
             <DialogHeader>
               <DialogTitle className="text-center text-xs uppercase tracking-[0.36em] text-muted-foreground">
                 Fast Complete
@@ -1000,7 +714,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                   {formatDuration(completionSummary.durationMinutes)}
                 </p>
                 <p className="mt-2 text-base text-muted-foreground">
-                  Reached {completionSummary.stage.emoji} {completionSummary.stage.label}
+                  Reached {completionSummary.stage.label}
                 </p>
               </div>
               <div className="glass-soft grid gap-4 rounded-[1.5rem] px-4 py-4 sm:grid-cols-2">
@@ -1041,7 +755,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
               <DialogFooter>
                 <Button onClick={() => void shareCompletion()} variant="secondary">
                   <Share2 className="mr-2 size-4" />
-                  Share Result
+                  Share result
                 </Button>
                 <Button onClick={() => setCompletionSummary(null)}>Done</Button>
               </DialogFooter>
@@ -1052,17 +766,17 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
 
       {levelUpSummary ? (
         <Dialog open onOpenChange={(open) => setLevelUpSummary(open ? levelUpSummary : null)}>
-          <DialogContent className="animate-pop-in">
+          <DialogContent className="animate-pop-in mx-2 max-w-[calc(100vw-1rem)] sm:mx-auto sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle>LEVEL UP</DialogTitle>
+              <DialogTitle>Level up</DialogTitle>
               <DialogDescription>Your steady consistency just moved you into a new level.</DialogDescription>
             </DialogHeader>
             <div className="glass-soft rounded-[1.5rem] border border-primary/30 px-4 py-5">
               <p className="font-[family:var(--font-heading)] text-3xl font-semibold text-foreground">
-                Level {levelUpSummary.previousLevel} → Level {levelUpSummary.newLevel}
+                Level {levelUpSummary.previousLevel} to Level {levelUpSummary.newLevel}
               </p>
               <p className="mt-2 text-sm text-muted-foreground">
-                Keep showing up for your planned windows. Your profile progress just moved.
+                Keep following the windows that fit your routine. Your profile progress just moved forward.
               </p>
             </div>
             <DialogFooter>

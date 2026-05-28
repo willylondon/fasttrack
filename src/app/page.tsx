@@ -6,7 +6,7 @@ import { getDashboardData } from "@/lib/fasting-data";
 export const metadata = {
   title: "FastTrack — Dashboard",
   description:
-    "Start a fasting window, follow your milestones, and keep your progress saved across your account.",
+    "Track your fasting window, keep your streak steady, and save progress across your account.",
 };
 
 export default async function Home() {
@@ -16,10 +16,10 @@ export default async function Home() {
   return (
     <AppShell
       currentPath="/"
-      description="Start a session, follow your milestones, and keep your progress saved across your account."
+      description="Build your streak. Track your window. Stay accountable."
       providers={authProviders}
       session={session}
-      title="Your fasting window is ready."
+      title="Today"
     >
       <FastingTimer
         initialData={dashboard}

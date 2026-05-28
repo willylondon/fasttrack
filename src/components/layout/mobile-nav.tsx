@@ -9,21 +9,32 @@ type MobileNavProps = {
 };
 
 const navItems = [
-  { href: "/", label: "Dash", icon: "🏠" },
-  { href: "/history", label: "Hist", icon: "📋" },
-  { href: "/feed", label: "Feed", icon: "🔥" },
-  { href: "/friends", label: "Fri", icon: "👥" },
-  { href: "/profile", label: "More", icon: "👤" },
+  { href: "/", label: "Today", icon: "🏠" },
+  { href: "/history", label: "History", icon: "📋" },
+  { href: "/friends", label: "Friends", icon: "👥" },
+  { href: "/profile", label: "Profile", icon: "👤" },
 ] as const;
 
+function getPrimaryPath(currentPath: MobileNavProps["currentPath"]) {
+  if (currentPath === "/feed") {
+    return "/friends";
+  }
+
+  if (currentPath === "/leaderboard") {
+    return "/profile";
+  }
+
+  return currentPath;
+}
+
 export function MobileNav({ currentPath }: MobileNavProps) {
+  const primaryPath = getPrimaryPath(currentPath);
+
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.1] bg-[rgba(11,11,11,0.95)] shadow-[0_-18px_40px_rgba(0,0,0,0.28)] backdrop-blur lg:hidden">
-      <div className="mx-auto grid max-w-6xl grid-cols-5 gap-1 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2">
+      <div className="mx-auto grid max-w-[980px] grid-cols-4 gap-1 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2">
         {navItems.map((item) => {
-          const active =
-            item.href === currentPath ||
-            (item.href === "/profile" && currentPath === "/leaderboard");
+          const active = item.href === primaryPath;
 
           return (
             <Link
