@@ -429,9 +429,14 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                         <AvatarFallback>{getInitials(session.displayName)}</AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="text-sm font-medium text-foreground">{session.displayName}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-medium text-foreground">{session.displayName}</p>
+                          <span className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-accent">
+                            Live now
+                          </span>
+                        </div>
                         <p className="text-xs text-muted-foreground">
-                          {formatCompactDuration(elapsedMinutes)} in • ends {format(new Date(Date.parse(session.startedAt) + session.plannedMinutes * 60000), "p")}
+                          started {format(new Date(session.startedAt), "p")} • {formatCompactDuration(elapsedMinutes)} in • ends {format(new Date(Date.parse(session.startedAt) + session.plannedMinutes * 60000), "p")}
                         </p>
                       </div>
                     </div>
@@ -460,7 +465,7 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                     <p className="text-sm font-medium text-foreground">{friend.displayName}</p>
                     <p className="text-xs text-muted-foreground">
                       {friend.activeSession
-                        ? `Currently fasting • ${formatCompactDuration(getElapsedMinutes({ startedAt: friend.activeSession.startedAt }, now))} in`
+                        ? `Live now • started ${format(new Date(friend.activeSession.startedAt), "p")} • ${formatCompactDuration(getElapsedMinutes({ startedAt: friend.activeSession.startedAt }, now))} in`
                         : `${friend.longestStreak} day longest streak`}
                     </p>
                   </div>

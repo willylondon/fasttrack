@@ -139,11 +139,16 @@ export function FeedView({ initialData, providers, signedIn }: FeedViewProps) {
                             <AvatarFallback>{getInitials(session.displayName)}</AvatarFallback>
                           </Avatar>
                           <div className="min-w-0 flex-1 space-y-1">
-                            <p className="text-sm leading-6 text-foreground">
-                              {session.displayName ?? "A friend"} is currently fasting.
-                            </p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm leading-6 text-foreground">
+                                {session.displayName ?? "A friend"} is currently fasting.
+                              </p>
+                              <span className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-accent">
+                                Live now
+                              </span>
+                            </div>
                             <p className="text-xs text-muted-foreground">
-                              {formatCompactDuration(elapsedMinutes)} in • planned {formatCompactDuration(session.plannedMinutes)} • ends {format(new Date(Date.parse(session.startedAt) + session.plannedMinutes * 60000), "p")}
+                              started {format(new Date(session.startedAt), "p")} • {formatCompactDuration(elapsedMinutes)} in • planned {formatCompactDuration(session.plannedMinutes)} • ends {format(new Date(Date.parse(session.startedAt) + session.plannedMinutes * 60000), "p")}
                             </p>
                           </div>
                         </div>

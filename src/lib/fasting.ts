@@ -50,6 +50,7 @@ export type ProfileSummary = {
   level: number;
   highestStageReached: number;
   friendCount: number;
+  shareLiveStatus: boolean;
   createdAt: string;
 };
 
@@ -181,6 +182,8 @@ export type ProfilePageData = {
   earnedBadges: UserBadge[];
   recentActivity: FeedEvent[];
   notificationsEnabled: boolean;
+  liveStatusSharingEnabled: boolean;
+  liveStatusSharingSupported: boolean;
 };
 
 type DatabaseProfile = {
@@ -195,6 +198,7 @@ type DatabaseProfile = {
   level?: number | null;
   highest_stage_reached?: number | null;
   friend_count?: number | null;
+  share_live_status?: boolean | null;
   created_at: string;
 };
 
@@ -266,6 +270,7 @@ export function mapProfile(record: DatabaseProfile): ProfileSummary {
     level: record.level ?? 1,
     highestStageReached: record.highest_stage_reached ?? 0,
     friendCount: record.friend_count ?? 0,
+    shareLiveStatus: record.share_live_status ?? true,
     createdAt: record.created_at,
   };
 }

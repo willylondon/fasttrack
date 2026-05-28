@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
-import { Bell, BellOff, Trophy } from "lucide-react";
+import { Bell, BellOff, Eye, EyeOff, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 import { SignInDialog } from "@/components/auth/sign-in-dialog";
@@ -55,6 +55,9 @@ function urlBase64ToUint8Array(base64String: string) {
 export function ProfileView({ initialData, providers, signedIn }: ProfileViewProps) {
   const [notificationsEnabled, setNotificationsEnabled] = useState(initialData.notificationsEnabled);
   const [isTogglingNotifications, setIsTogglingNotifications] = useState(false);
+  const [liveStatusSharingEnabled, setLiveStatusSharingEnabled] = useState(initialData.liveStatusSharingEnabled);
+  const [isUpdatingLiveSharing, setIsUpdatingLiveSharing] = useState(false);
+  const liveStatusSharingSupported = initialData.liveStatusSharingSupported;
   const notificationsReady = Boolean(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
   const earnedBadgeIds = useMemo(
     () => new Set(initialData.earnedBadges.map((badge) => badge.badgeId)),
@@ -163,6 +166,33 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
     }
   }
 
+  async function toggleLiveSharing() {
+    setIsUpdatingLiveSharing(true);
+
+    try {
+      const response = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          shareLiveStatus: !liveStatusSharingEnabled,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to update live status sharing.");
+      }
+
+      setLiveStatusSharingEnabled((current) => !current);
+      toast.success(!liveStatusSharingEnabled ? "Live fasting sharing enabled." : "Live fasting sharing hidden.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to update live sharing.");
+    } finally {
+      setIsUpdatingLiveSharing(false);
+    }
+  }
+
   return (
     <div className="grid gap-6">
       <Card className="section-enter" style={{ animationDelay: "0ms" }}>
@@ -197,6 +227,19 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
               <Trophy className="mr-2 size-4" />
               View leaderboard
             </Link>
+            <Button
+              className="rounded-2xl"
+              disabled={isUpdatingLiveSharing || !liveStatusSharingSupported}
+              onClick={() => void toggleLiveSharing()}
+              variant={liveStatusSharingEnabled ? "secondary" : "outline"}
+            >
+              {liveStatusSharingEnabled ? <Eye className="mr-2 size-4" /> : <EyeOff className="mr-2 size-4" />}
+              {liveStatusSharingSupported
+                ? liveStatusSharingEnabled
+                  ? "Sharing live fasting"
+                  : "Live fasting hidden"
+                : "Live sharing unavailable"}
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -205,6 +248,16 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
               Push notifications are not configured for this environment yet. Your saved progress and account data still work normally.
             </div>
           ) : null}
+          <div className="glass-soft rounded-[1.5rem] px-4 py-4 text-sm text-muted-foreground">
+            <p className="font-medium text-foreground">Live fasting visibility</p>
+            <p className="mt-2 leading-6">
+              {!liveStatusSharingSupported
+                ? "Live in-progress sharing is not configured for this environment yet."
+                : liveStatusSharingEnabled
+                ? "Accepted friends can see when you are currently fasting, how long you have been in the window, and your planned end time."
+                : "Accepted friends will not see your in-progress fasting window. Completed sessions and other feed updates still work as usual."}
+            </p>
+          </div>
           <div className="glass-soft rounded-[1.5rem] p-4">
             <div className="mb-3 flex items-center justify-between">
               <p className="text-sm font-medium text-foreground">Level progress</p>

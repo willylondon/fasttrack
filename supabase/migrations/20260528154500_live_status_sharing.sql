@@ -1,0 +1,2 @@
+ALTER TABLE profiles
+ADD COLUMN IF NOT EXISTS share_live_status BOOLEAN DEFAULT TRUE;

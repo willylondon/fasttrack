@@ -248,6 +248,8 @@ export async function getProfilePageData(userId: string | null | undefined): Pro
       earnedBadges: [],
       recentActivity: [],
       notificationsEnabled: false,
+      liveStatusSharingEnabled: true,
+      liveStatusSharingSupported: false,
     };
   }
 
@@ -295,6 +297,7 @@ export async function getProfilePageData(userId: string | null | undefined): Pro
     ...mapProfile(profileResult.data),
     ...(await getComputedProfileFields(userId)),
   };
+  const liveStatusSharingSupported = "share_live_status" in profileResult.data;
 
   return {
     profile,
@@ -322,6 +325,8 @@ export async function getProfilePageData(userId: string | null | undefined): Pro
       })
     ),
     notificationsEnabled: !subscriptionResult.error && (subscriptionResult.data ?? []).length > 0,
+    liveStatusSharingEnabled: profile.shareLiveStatus,
+    liveStatusSharingSupported,
   };
 }
 
@@ -459,6 +464,23 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
     friends,
     liveSessions,
   };
+}
+
+export async function updateLiveStatusSharing(userId: string, shareLiveStatus: boolean) {
+  const result = await createAdminClient()
+    .from("profiles")
+    .update({
+      share_live_status: shareLiveStatus,
+    })
+    .eq("id", userId)
+    .select(PROFILE_COLUMNS)
+    .single();
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  return mapProfile(result.data);
 }
 
 export async function startFast(userId: string, plannedMinutes: number) {
@@ -953,6 +975,10 @@ async function getActiveFriendSessions(friendIds: string[]) {
 
     const profile = profileLookup.get(session.user_id);
 
+    if (profile?.shareLiveStatus === false) {
+      continue;
+    }
+
     latestByUser.set(session.user_id, {
       userId: session.user_id,
       displayName: profile?.displayName ?? "FastTrack friend",
@@ -974,6 +1000,7 @@ async function getProfilesById(userIds: string[], includeStreaks = false) {
     SocialProfile & {
       currentStreak?: number;
       longestStreak?: number;
+      shareLiveStatus?: boolean;
     }
   >();
 
@@ -984,11 +1011,11 @@ async function getProfilesById(userIds: string[], includeStreaks = false) {
   const profileResult = includeStreaks
     ? await createAdminClient()
         .from("profiles")
-        .select("id,display_name,avatar_url,current_streak,longest_streak")
+        .select("*")
         .in("id", ids)
     : await createAdminClient()
         .from("profiles")
-        .select("id,display_name,avatar_url")
+        .select("*")
         .in("id", ids);
 
   if (profileResult.error) {
@@ -1001,6 +1028,7 @@ async function getProfilesById(userIds: string[], includeStreaks = false) {
     avatar_url: string | null;
     current_streak?: number | null;
     longest_streak?: number | null;
+    share_live_status?: boolean | null;
   }>;
 
   for (const profile of profiles) {
@@ -1010,6 +1038,7 @@ async function getProfilesById(userIds: string[], includeStreaks = false) {
       avatarUrl: profile.avatar_url,
       currentStreak: "current_streak" in profile ? profile.current_streak ?? 0 : undefined,
       longestStreak: "longest_streak" in profile ? profile.longest_streak ?? 0 : undefined,
+      shareLiveStatus: profile.share_live_status ?? true,
     });
   }
 
