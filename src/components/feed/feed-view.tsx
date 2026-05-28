@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FeedPageData, buildFeedEventCopy, formatCompactDuration, getElapsedMinutes } from "@/lib/fasting";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,8 @@ type FeedViewProps = {
   };
   signedIn: boolean;
 };
+
+type FeedFilter = "all" | "live" | "completed";
 
 function getInitials(value?: string | null) {
   if (!value) {
@@ -49,6 +52,7 @@ function getGroupLabel(date: Date) {
 
 export function FeedView({ initialData, providers, signedIn }: FeedViewProps) {
   const [now, setNow] = useState(Date.now());
+  const [filter, setFilter] = useState<FeedFilter>("all");
 
   useEffect(() => {
     if (!initialData.liveSessions.length) {
@@ -70,6 +74,20 @@ export function FeedView({ initialData, providers, signedIn }: FeedViewProps) {
 
     return accumulator;
   }, {});
+  const completedGroups = initialData.feed
+    .filter((event) => event.eventType === "fast_completed")
+    .reduce<Record<string, FeedPageData["feed"]>>((accumulator, event) => {
+      const key = getGroupLabel(new Date(event.createdAt));
+
+      accumulator[key] ??= [];
+      accumulator[key].push(event);
+
+      return accumulator;
+    }, {});
+  const showLiveSessions = filter !== "completed" && initialData.liveSessions.length > 0;
+  const activeGroups = filter === "completed" ? completedGroups : groups;
+  const hasAnyContent = initialData.liveSessions.length > 0 || Object.keys(groups).length > 0;
+  const hasVisibleContent = showLiveSessions || Object.keys(activeGroups).length > 0;
 
   return (
     <div className="grid gap-6">
@@ -120,9 +138,21 @@ export function FeedView({ initialData, providers, signedIn }: FeedViewProps) {
                 </div>
               }
             />
-          ) : Object.keys(groups).length || initialData.liveSessions.length ? (
+          ) : hasAnyContent ? (
             <>
-              {initialData.liveSessions.length ? (
+              <Tabs
+                value={filter}
+                onValueChange={(value) => setFilter(value as FeedFilter)}
+                className="gap-3"
+              >
+                <TabsList aria-label="Feed filters" className="w-full sm:w-auto">
+                  <TabsTrigger value="all">All updates</TabsTrigger>
+                  <TabsTrigger value="live">Live now</TabsTrigger>
+                  <TabsTrigger value="completed">Completed only</TabsTrigger>
+                </TabsList>
+              </Tabs>
+
+              {showLiveSessions ? (
                 <section className="space-y-3">
                   <h2 className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Fasting now</h2>
                   <div className="space-y-3">
@@ -158,7 +188,7 @@ export function FeedView({ initialData, providers, signedIn }: FeedViewProps) {
                 </section>
               ) : null}
 
-              {Object.entries(groups).map(([label, events]) => (
+              {Object.entries(activeGroups).map(([label, events]) => (
                 <section key={label} className="space-y-3">
                   <h2 className="text-xs uppercase tracking-[0.24em] text-muted-foreground">{label}</h2>
                   <div className="space-y-3">
@@ -182,6 +212,14 @@ export function FeedView({ initialData, providers, signedIn }: FeedViewProps) {
                   </div>
                 </section>
               ))}
+
+              {!hasVisibleContent ? (
+                <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/60 px-5 py-10 text-center text-sm text-muted-foreground">
+                  {filter === "live"
+                    ? "No friends are sharing an active fasting window right now."
+                    : "No completed windows have been shared here yet."}
+                </div>
+              ) : null}
             </>
           ) : (
             <EmptyState
