@@ -69,9 +69,8 @@ export function AppShell({
                 </Link>
               ))}
               <Separator orientation="vertical" className="mx-1 h-6" />
-              <AuthButton providers={providers} user={session?.user} />
             </div>
-            <div className="flex items-center gap-2 lg:hidden">
+            <div className="flex items-center gap-2">
               <AuthButton providers={providers} user={session?.user} />
             </div>
           </div>
