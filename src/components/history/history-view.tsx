@@ -1,19 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { format } from "date-fns";
+import Link from "next/link";
+import { format, subDays } from "date-fns";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
+import { SignInDialog } from "@/components/auth/sign-in-dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HistoryData, buildHistorySeries, calculateStats, formatCompactDuration } from "@/lib/fasting";
+import { cn } from "@/lib/utils";
 
 type HistoryViewProps = {
   initialData: HistoryData;
+  providers: {
+    google: boolean;
+    github: boolean;
+  };
+  signedIn: boolean;
 };
 
-export function HistoryView({ initialData }: HistoryViewProps) {
+export function HistoryView({ initialData, providers, signedIn }: HistoryViewProps) {
   const [history, setHistory] = useState(initialData);
 
   useEffect(() => {
@@ -23,16 +33,58 @@ export function HistoryView({ initialData }: HistoryViewProps) {
   const stats = calculateStats(history.sessions, history.profile);
   const chartData = buildHistorySeries(history.sessions);
   const completedSessions = history.sessions.filter((session) => session.status === "completed");
+  const resolvedSessions = history.sessions.filter((session) => session.status !== "active");
+  const completionRate = resolvedSessions.length
+    ? Math.round((completedSessions.length / resolvedSessions.length) * 100)
+    : 0;
+  const weeklyConsistency = Math.min(
+    100,
+    Math.round(
+      (completedSessions.filter(
+        (session) => session.endedAt && new Date(session.endedAt) >= subDays(new Date(), 7)
+      ).length /
+        7) *
+        100
+    )
+  );
+
+  if (!signedIn) {
+    return (
+      <EmptyState
+        eyebrow="History"
+        title="Your fasting history will appear here."
+        description="Track completed windows, trend lines, streaks, and recent sessions once you sign in and start saving progress."
+        actions={
+          <>
+            <SignInDialog
+              buttonClassName="w-full sm:w-auto"
+              buttonLabel="Sign in to save your progress"
+              providers={providers}
+              size="lg"
+            />
+            <Link href="/" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full sm:w-auto")}>
+              Back to dashboard
+            </Link>
+          </>
+        }
+        preview={
+          <div className="glass-soft rounded-[1.6rem] p-4">
+            <div className="h-48 rounded-[1.3rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))]" />
+          </div>
+        }
+      />
+    );
+  }
 
   return (
     <div className="grid gap-6">
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
         {[
-          { label: "Total fasts", value: stats.totalFasts.toString() },
-          { label: "Total hours", value: stats.totalHours.toString() },
-          { label: "Average", value: formatCompactDuration(stats.averageMinutes) },
-          { label: "Longest", value: formatCompactDuration(stats.longestFast) },
+          { label: "Completed sessions", value: stats.totalFasts.toString() },
           { label: "Current streak", value: `${stats.currentStreak} day${stats.currentStreak === 1 ? "" : "s"}` },
+          { label: "Average session", value: formatCompactDuration(stats.averageMinutes) },
+          { label: "Completion rate", value: `${completionRate}%` },
+          { label: "Weekly consistency", value: `${weeklyConsistency}%` },
         ].map((item, index) => (
           <Card key={item.label} className="section-enter" style={{ animationDelay: `${index * 100}ms` }}>
             <CardHeader className="pb-2">
@@ -45,8 +97,8 @@ export function HistoryView({ initialData }: HistoryViewProps) {
 
       <Card className="section-enter" style={{ animationDelay: "500ms" }}>
         <CardHeader>
-          <CardTitle>Completion trend</CardTitle>
-          <CardDescription>Synced completed fasts from your FastTrack account.</CardDescription>
+          <CardTitle>Weekly trend</CardTitle>
+          <CardDescription>Review how your completed windows are trending over time.</CardDescription>
         </CardHeader>
         <CardContent>
           {chartData.length ? (
@@ -107,9 +159,21 @@ export function HistoryView({ initialData }: HistoryViewProps) {
               </TabsContent>
             </Tabs>
           ) : (
-            <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/60 px-5 py-16 text-center text-sm text-muted-foreground">
-              Complete a fast on the dashboard and it will appear here with charts and streak math.
-            </div>
+            <EmptyState
+              eyebrow="No saved sessions"
+              title="Your fasting history will appear here."
+              description="Complete a planned session and FastTrack will start building your trend view, streak summary, and recent log."
+              actions={
+                <Link href="/" className={cn(buttonVariants({ size: "lg" }), "w-full sm:w-auto")}>
+                  Start from the dashboard
+                </Link>
+              }
+              preview={
+                <div className="glass-soft rounded-[1.5rem] p-4">
+                  <div className="h-48 rounded-[1.3rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))]" />
+                </div>
+              }
+            />
           )}
         </CardContent>
       </Card>
@@ -117,7 +181,7 @@ export function HistoryView({ initialData }: HistoryViewProps) {
       <Card className="section-enter" style={{ animationDelay: "600ms" }}>
         <CardHeader>
           <CardTitle>Recent fasts</CardTitle>
-          <CardDescription>Latest completed sessions, newest first.</CardDescription>
+          <CardDescription>Your latest completed sessions, newest first.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {completedSessions.length ? (
@@ -147,7 +211,7 @@ export function HistoryView({ initialData }: HistoryViewProps) {
             ))
           ) : (
             <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/60 px-5 py-12 text-center text-sm text-muted-foreground">
-              No completed fasts yet.
+              No completed sessions yet. Once you finish a planned window, it will appear here.
             </div>
           )}
         </CardContent>

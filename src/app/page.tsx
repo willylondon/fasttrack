@@ -3,6 +3,12 @@ import { AppShell } from "@/components/app-shell";
 import { FastingTimer } from "@/components/dashboard/fasting-timer";
 import { getDashboardData } from "@/lib/fasting-data";
 
+export const metadata = {
+  title: "FastTrack — Dashboard",
+  description:
+    "Start a fasting window, follow your milestones, and keep your progress saved across your account.",
+};
+
 export default async function Home() {
   const session = await auth();
   const dashboard = await getDashboardData(session?.user?.id);
@@ -10,12 +16,17 @@ export default async function Home() {
   return (
     <AppShell
       currentPath="/"
-      description="A focused dashboard for live timer tracking, stage milestones, and clean session logging."
+      description="Start a session, follow your milestones, and keep your progress saved across your account."
       providers={authProviders}
       session={session}
-      title="Dashboard"
+      title="Your fasting window is ready."
     >
-      <FastingTimer initialData={dashboard} userId={session?.user?.id} />
+      <FastingTimer
+        initialData={dashboard}
+        providers={authProviders}
+        signedIn={Boolean(session?.user?.id)}
+        userId={session?.user?.id}
+      />
     </AppShell>
   );
 }

@@ -39,13 +39,13 @@ export function TimerRing({ elapsedMinutes, plannedMinutes, progress, stage, act
         />
       </svg>
       <div className="glass-card absolute flex size-40 sm:size-52 flex-col items-center justify-center rounded-full text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-        <p className="text-[0.55rem] uppercase tracking-[0.22em] text-muted-foreground sm:text-[0.68rem]">Target {targetHours}h</p>
+        <p className="text-[0.55rem] uppercase tracking-[0.22em] text-muted-foreground sm:text-[0.68rem]">Planned {targetHours}h</p>
         <p className="mt-2 sm:mt-3 font-[family:var(--font-heading)] text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
           {durationLabel}
         </p>
         <div className="mt-2 sm:mt-3 flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.05] px-2.5 py-1 text-xs sm:px-3 sm:py-1.5 sm:text-sm text-muted-foreground">
           <span className="text-sm sm:text-base">{stage.emoji}</span>
-          <span>{active ? stage.label : "Ready to start"}</span>
+          <span>{active ? stage.label : "Ready when you are"}</span>
         </div>
       </div>
     </div>

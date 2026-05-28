@@ -2,18 +2,33 @@
 
 import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
+import Link from "next/link";
 import { Check, Search, Sparkles, UserPlus, Users, X } from "lucide-react";
 import { toast } from "sonner";
+import { z } from "zod";
 
+import { SignInDialog } from "@/components/auth/sign-in-dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { FriendSearchResult, FriendsPageData } from "@/lib/fasting";
+import { cn } from "@/lib/utils";
 
 type FriendsViewProps = {
   initialData: FriendsPageData;
+  providers: {
+    google: boolean;
+    github: boolean;
+  };
+  signedIn: boolean;
 };
+
+const searchSchema = z
+  .string()
+  .trim()
+  .min(2, "Use at least 2 characters to search by name or email.");
 
 function getInitials(value?: string | null) {
   if (!value) {
@@ -38,12 +53,13 @@ async function readApiError(response: Response) {
   }
 }
 
-export function FriendsView({ initialData }: FriendsViewProps) {
+export function FriendsView({ initialData, providers, signedIn }: FriendsViewProps) {
   const [friendsData, setFriendsData] = useState(initialData);
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<FriendSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
+  const [searchFeedback, setSearchFeedback] = useState<string | null>(null);
 
   useEffect(() => {
     setFriendsData(initialData);
@@ -65,11 +81,20 @@ export function FriendsView({ initialData }: FriendsViewProps) {
   }
 
   async function runSearch() {
+    const parsedQuery = searchSchema.safeParse(query);
+
     if (!query.trim()) {
       setSearchResults([]);
+      setSearchFeedback(null);
       return;
     }
 
+    if (!parsedQuery.success) {
+      setSearchFeedback(parsedQuery.error.issues[0]?.message ?? "Enter a valid search.");
+      return;
+    }
+
+    setSearchFeedback(null);
     setIsSearching(true);
 
     try {
@@ -84,6 +109,7 @@ export function FriendsView({ initialData }: FriendsViewProps) {
 
       const payload = (await response.json()) as { results: FriendSearchResult[] };
       setSearchResults(payload.results);
+      setSearchFeedback(payload.results.length ? "Results ready." : "No matching FastTrack members found yet.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to search profiles.");
     } finally {
@@ -150,6 +176,39 @@ export function FriendsView({ initialData }: FriendsViewProps) {
 
   return (
     <div className="grid gap-6">
+      {!signedIn ? (
+        <EmptyState
+          eyebrow="Friends"
+          title="Build your fasting circle."
+          description="Add trusted friends so you can see progress, stay accountable, and keep your habit social without turning it noisy."
+          actions={
+            <>
+              <SignInDialog
+                buttonClassName="w-full sm:w-auto"
+                buttonLabel="Sign in to save your progress"
+                providers={providers}
+                size="lg"
+              />
+              <Link href="/feed" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full sm:w-auto")}>
+                Preview the feed
+              </Link>
+            </>
+          }
+          preview={
+            <div className="space-y-3">
+              {[
+                "Search by name or email to invite people you know.",
+                "Incoming requests, outgoing requests, and your circle stay in one place.",
+              ].map((item) => (
+                <div key={item} className="glass-soft rounded-[1.4rem] px-4 py-4 text-sm text-muted-foreground">
+                  {item}
+                </div>
+              ))}
+            </div>
+          }
+        />
+      ) : null}
+
       <Card className="section-enter" style={{ animationDelay: "0ms" }}>
         <CardHeader>
           <div className="flex items-center gap-3">
@@ -158,7 +217,7 @@ export function FriendsView({ initialData }: FriendsViewProps) {
             </div>
             <div>
               <CardTitle>Find Friends</CardTitle>
-              <CardDescription>Search FastTrack profiles by name or email.</CardDescription>
+              <CardDescription>Search FastTrack profiles by name or email and invite the people you trust.</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -172,13 +231,20 @@ export function FriendsView({ initialData }: FriendsViewProps) {
                   void runSearch();
                 }
               }}
+              aria-label="Search for friends"
               placeholder="Search by name or email"
               value={query}
             />
-            <Button className="h-11 w-full sm:w-auto px-4" disabled={isSearching} onClick={() => void runSearch()}>
+            <Button
+              aria-label="Search FastTrack profiles"
+              className="h-11 w-full sm:w-auto px-4"
+              disabled={isSearching || !signedIn}
+              onClick={() => void runSearch()}
+            >
               <Search className="size-4" />
             </Button>
           </div>
+          {searchFeedback ? <p className="text-sm text-muted-foreground">{searchFeedback}</p> : null}
 
           <div className="space-y-3">
             {searchResults.length ? (
@@ -209,116 +275,110 @@ export function FriendsView({ initialData }: FriendsViewProps) {
               ))
             ) : (
               <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/60 px-5 py-10 text-center text-sm text-muted-foreground">
-                Search results will appear here.
+                Search results will appear here once you look up a name or email.
               </div>
             )}
           </div>
         </CardContent>
       </Card>
 
-      <Card className="section-enter" style={{ animationDelay: "100ms" }}>
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <div className="rounded-2xl bg-gold/10 p-2 text-gold shadow-[0_8px_20px_rgba(245,158,11,0.16)]">
-              <Sparkles className="size-4" />
+      {(friendsData.incomingRequests.length || friendsData.outgoingRequests.length) && (
+        <Card className="section-enter" style={{ animationDelay: "100ms" }}>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl bg-gold/10 p-2 text-gold shadow-[0_8px_20px_rgba(245,158,11,0.16)]">
+                <Sparkles className="size-4" />
+              </div>
+              <div>
+                <CardTitle>Pending requests</CardTitle>
+                <CardDescription>Incoming and outgoing requests, all in one place.</CardDescription>
+              </div>
             </div>
-            <div>
-              <CardTitle>Pending Requests</CardTitle>
-              <CardDescription>Incoming and outgoing requests in one place.</CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <section className="space-y-3">
-            <h2 className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Incoming</h2>
+          </CardHeader>
+          <CardContent className="space-y-5">
             {friendsData.incomingRequests.length ? (
-              friendsData.incomingRequests.map((request) => (
-                <div
-                  key={request.id}
-                  className="glass-soft flex flex-col gap-3 rounded-[1.5rem] px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <Avatar size="sm">
-                      <AvatarImage src={request.sender.avatarUrl ?? undefined} alt={request.sender.displayName ?? "Friend"} />
-                      <AvatarFallback>{getInitials(request.sender.displayName)}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{request.sender.displayName ?? request.sender.email}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {request.sender.email ?? "FastTrack member"} • {formatDistanceToNow(new Date(request.createdAt), { addSuffix: true })}
-                      </p>
+              <section className="space-y-3">
+                <h2 className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Incoming</h2>
+                {friendsData.incomingRequests.map((request) => (
+                  <div
+                    key={request.id}
+                    className="glass-soft flex flex-col gap-3 rounded-[1.5rem] px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Avatar size="sm">
+                        <AvatarImage src={request.sender.avatarUrl ?? undefined} alt={request.sender.displayName ?? "Friend"} />
+                        <AvatarFallback>{getInitials(request.sender.displayName)}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{request.sender.displayName ?? request.sender.email}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {request.sender.email ?? "FastTrack member"} • {formatDistanceToNow(new Date(request.createdAt), { addSuffix: true })}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        className="rounded-xl"
+                        disabled={pendingActionId === request.id}
+                        onClick={() => void handleRequest(request.id, "accepted")}
+                        size="sm"
+                        variant="secondary"
+                      >
+                        <Check className="mr-1 size-4" />
+                        Accept
+                      </Button>
+                      <Button
+                        className="rounded-xl"
+                        disabled={pendingActionId === request.id}
+                        onClick={() => void handleRequest(request.id, "rejected")}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        <X className="mr-1 size-4" />
+                        Reject
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                ))}
+              </section>
+            ) : null}
+
+            {friendsData.outgoingRequests.length ? (
+              <section className="space-y-3">
+                <h2 className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Outgoing</h2>
+                {friendsData.outgoingRequests.map((request) => (
+                  <div
+                    key={request.id}
+                    className="glass-soft flex flex-col gap-3 rounded-[1.5rem] px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Avatar size="sm">
+                        <AvatarImage src={request.receiver.avatarUrl ?? undefined} alt={request.receiver.displayName ?? "Friend"} />
+                        <AvatarFallback>{getInitials(request.receiver.displayName)}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{request.receiver.displayName ?? request.receiver.email}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {request.receiver.email ?? "FastTrack member"} • sent {formatDistanceToNow(new Date(request.createdAt), { addSuffix: true })}
+                        </p>
+                      </div>
+                    </div>
                     <Button
                       className="rounded-xl"
                       disabled={pendingActionId === request.id}
-                      onClick={() => void handleRequest(request.id, "accepted")}
-                      size="sm"
-                      variant="secondary"
-                    >
-                      <Check className="mr-1 size-4" />
-                      Accept
-                    </Button>
-                    <Button
-                      className="rounded-xl"
-                      disabled={pendingActionId === request.id}
-                      onClick={() => void handleRequest(request.id, "rejected")}
+                      onClick={() => void handleRequest(request.id, "cancel")}
                       size="sm"
                       variant="ghost"
                     >
-                      <X className="mr-1 size-4" />
-                      Reject
+                      Cancel
                     </Button>
                   </div>
-                </div>
-              ))
-            ) : (
-              <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/60 px-5 py-10 text-center text-sm text-muted-foreground">
-                No incoming requests.
-              </div>
-            )}
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Outgoing</h2>
-            {friendsData.outgoingRequests.length ? (
-              friendsData.outgoingRequests.map((request) => (
-                <div
-                  key={request.id}
-                  className="glass-soft flex flex-col gap-3 rounded-[1.5rem] px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <Avatar size="sm">
-                      <AvatarImage src={request.receiver.avatarUrl ?? undefined} alt={request.receiver.displayName ?? "Friend"} />
-                      <AvatarFallback>{getInitials(request.receiver.displayName)}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{request.receiver.displayName ?? request.receiver.email}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {request.receiver.email ?? "FastTrack member"} • sent {formatDistanceToNow(new Date(request.createdAt), { addSuffix: true })}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    className="rounded-xl"
-                    disabled={pendingActionId === request.id}
-                    onClick={() => void handleRequest(request.id, "cancel")}
-                    size="sm"
-                    variant="ghost"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              ))
-            ) : (
-              <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/60 px-5 py-10 text-center text-sm text-muted-foreground">
-                No outgoing requests.
-              </div>
-            )}
-          </section>
-        </CardContent>
-      </Card>
+                ))}
+              </section>
+            ) : null}
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="section-enter" style={{ animationDelay: "200ms" }}>
         <CardHeader>
@@ -327,8 +387,8 @@ export function FriendsView({ initialData }: FriendsViewProps) {
               <Users className="size-4" />
             </div>
             <div>
-              <CardTitle>Friends List</CardTitle>
-              <CardDescription>Your accepted FastTrack circle ranked by streak.</CardDescription>
+              <CardTitle>Friends list</CardTitle>
+              <CardDescription>Your accepted FastTrack circle, ordered by current streak.</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -357,10 +417,21 @@ export function FriendsView({ initialData }: FriendsViewProps) {
                 </div>
               </div>
             ))
-          ) : (
+          ) : friendsData.incomingRequests.length || friendsData.outgoingRequests.length ? (
             <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/60 px-5 py-12 text-center text-sm text-muted-foreground">
-              No accepted friends yet.
+              Your accepted friends will appear here once requests are confirmed.
             </div>
+          ) : (
+            <EmptyState
+              eyebrow="Getting started"
+              title="Build your fasting circle."
+              description="Search for a friend by name or email, send an invite, and keep your habit grounded in steady accountability."
+              actions={
+                <Link href="/feed" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full sm:w-auto")}>
+                  Preview the feed
+                </Link>
+              }
+            />
           )}
         </CardContent>
       </Card>

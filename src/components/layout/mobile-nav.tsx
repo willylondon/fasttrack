@@ -19,17 +19,18 @@ const navItems = [
 
 export function MobileNav({ currentPath }: MobileNavProps) {
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.1] bg-[rgba(11,11,11,0.95)] backdrop-blur md:hidden">
-      <div className="mx-auto grid max-w-6xl grid-cols-6 px-2 py-2">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.1] bg-[rgba(11,11,11,0.95)] shadow-[0_-18px_40px_rgba(0,0,0,0.28)] backdrop-blur md:hidden">
+      <div className="mx-auto grid max-w-6xl grid-cols-6 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2">
         {navItems.map((item) => {
           const active = item.href === currentPath;
 
           return (
             <Link
+              aria-label={item.label}
               key={item.href}
               href={item.href}
               className={cn(
-                "flex min-h-[44px] flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 text-center transition-colors",
+                "flex min-h-[48px] flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-center transition-colors",
                 active ? "text-[#8B5CF6]" : "text-gray-500"
               )}
             >

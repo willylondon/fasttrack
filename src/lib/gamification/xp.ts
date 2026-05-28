@@ -1,3 +1,5 @@
+import { FASTING_STAGES } from "@/lib/fasting-stages";
+
 export function xpForNextLevel(level: number) {
   return Math.max(250, level * 250);
 }
@@ -47,8 +49,9 @@ export function streakBonusForXp(currentStreak: number) {
 }
 
 export function xpForFasting(durationMinutes: number, stageReached: number, currentStreak: number) {
-  const hoursXp = Math.round((Math.max(0, durationMinutes) / 60) * 10);
-  const stageXp = Math.max(0, stageReached) * 25;
+  const safeStageCap = FASTING_STAGES.findLastIndex((stage) => stage.hour <= 18);
+  const hoursXp = Math.round((Math.min(Math.max(0, durationMinutes), 18 * 60) / 60) * 10);
+  const stageXp = Math.min(Math.max(0, stageReached), safeStageCap) * 25;
   const streakXp = streakBonusForXp(currentStreak);
 
   return hoursXp + stageXp + streakXp;

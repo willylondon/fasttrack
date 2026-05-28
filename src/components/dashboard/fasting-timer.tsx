@@ -9,13 +9,16 @@ import {
   Flame,
   PauseCircle,
   Share2,
+  ShieldAlert,
   Trophy,
   UserPlus,
   Users,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { z } from "zod";
 
+import { SignInDialog } from "@/components/auth/sign-in-dialog";
 import { TimerRing } from "@/components/dashboard/timer-ring";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -55,6 +58,11 @@ import { cn } from "@/lib/utils";
 
 type FastingTimerProps = {
   initialData: DashboardData;
+  providers: {
+    google: boolean;
+    github: boolean;
+  };
+  signedIn: boolean;
   userId?: string | null;
 };
 
@@ -114,6 +122,7 @@ function getStageCardState(index: number, currentIndex: number, active: boolean)
 }
 
 const CONFETTI_COLORS = ["#8B5CF6", "#A855F7", "#F59E0B", "#22C55E", "#06B6D4", "#EF4444"];
+const inviteSchema = z.string().trim().email("Enter a valid email address.");
 const CONFETTI_PIECES = Array.from({ length: 26 }, (_, index) => ({
   id: index,
   left: `${4 + (index % 13) * 7.2}%`,
@@ -124,7 +133,7 @@ const CONFETTI_PIECES = Array.from({ length: 26 }, (_, index) => ({
   color: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
 }));
 
-export function FastingTimer({ initialData, userId }: FastingTimerProps) {
+export function FastingTimer({ initialData, providers, signedIn, userId }: FastingTimerProps) {
   const [dashboardData, setDashboardData] = useState(initialData);
   const [selectedPreset, setSelectedPreset] = useState<(typeof FASTING_PRESETS)[number]["label"]>("16:8");
   const [customHours, setCustomHours] = useState("14");
@@ -169,6 +178,24 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
   const currentStage = getCurrentStage(elapsedHours);
   const stats = calculateStats(dashboardData.sessions, dashboardData.profile);
   const completedCount = dashboardData.sessions.filter((session) => session.status === "completed").length;
+  const weeklyConsistency = Math.min(
+    100,
+    Math.round(
+      (dashboardData.sessions.filter(
+        (session) =>
+          session.status === "completed" &&
+          session.endedAt &&
+          Date.parse(session.endedAt) >= Date.now() - 7 * 24 * 60 * 60 * 1000
+      ).length /
+        7) *
+        100
+    )
+  );
+  const accountStatusCopy = signedIn
+    ? activeSession
+      ? "Progress saved"
+      : "Saved to your account"
+    : "Sign in to save progress";
 
   const refreshDashboard = useCallback(async (silent = false) => {
     if (!userId) {
@@ -301,7 +328,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
         milestoneStageReached: 0,
       }));
       await refreshDashboard(true);
-      toast.success("Fast started. Supabase is tracking it live.");
+      toast.success("Window started. Progress saved.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to start fast.");
     } finally {
@@ -361,9 +388,9 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
             newLevel: payload.gamification.newLevel,
           });
         }
-        toast.success("Fast completed and synced.");
+        toast.success("Session complete. Progress saved.");
       } else {
-        toast.success("Fast cancelled.");
+        toast.success("Session cancelled.");
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to update this fast.");
@@ -373,8 +400,10 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
   }
 
   async function sendFriendRequest() {
-    if (!inviteEmail.trim()) {
-      toast.error("Enter an email to invite a friend.");
+    const parsedEmail = inviteSchema.safeParse(inviteEmail);
+
+    if (!parsedEmail.success) {
+      toast.error(parsedEmail.error.issues[0]?.message ?? "Enter a valid email address.");
       return;
     }
 
@@ -387,7 +416,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: inviteEmail,
+          email: parsedEmail.data,
         }),
       });
 
@@ -453,14 +482,14 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
         <CardHeader className="border-b border-white/[0.08] pb-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <Badge className="mb-3">Live Timer</Badge>
-              <CardTitle>Stay inside the window</CardTitle>
+              <Badge className="mb-3">Today&apos;s window</Badge>
+              <CardTitle>Your fasting window is ready.</CardTitle>
               <CardDescription>
-                Start a fast, track each stage, and log the result when you finish.
+                Start a session, follow your milestones, and keep your progress saved across your account.
               </CardDescription>
             </div>
             <div className="glass-soft rounded-full px-4 py-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-              Synced • Supabase-backed
+              {accountStatusCopy}
             </div>
           </div>
         </CardHeader>
@@ -481,7 +510,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
               <p className="mt-3 text-base text-muted-foreground">
                 {activeSession
                   ? `${currentStage.emoji} ${currentStage.label} at ${elapsedHours.toFixed(1)}h`
-                  : "Choose a plan and start when you are ready."}
+                  : "Choose a window and start when your body and schedule are ready."}
               </p>
             </div>
           </div>
@@ -519,7 +548,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
             <div className="glass-soft grid gap-3 rounded-[1.5rem] p-3 sm:p-4">
               <div className="flex items-center justify-between gap-3">
                 <label className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Session note</label>
-                <span className="text-xs text-muted-foreground">Saved at finish</span>
+                <span className="text-xs text-muted-foreground">Saved when you finish</span>
               </div>
               <Textarea
                 className="min-h-24"
@@ -531,7 +560,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
 
             <div className="grid gap-3 sm:grid-cols-3">
               <Button className="h-11 w-full" disabled={isMutatingFast} onClick={startFast}>
-                Start
+                Start fast
               </Button>
               <Button
                 className="h-11 w-full"
@@ -539,7 +568,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
                 onClick={() => setPendingAction("complete")}
                 variant="secondary"
               >
-                End
+                End fast
               </Button>
               <Button
                 className="h-11 w-full"
@@ -550,12 +579,27 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
                 Cancel
               </Button>
             </div>
+            {!signedIn ? (
+              <div className="glass-soft flex flex-col gap-3 rounded-[1.5rem] p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Save this progress to your account.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Sign in to keep your sessions, streaks, history, and friend activity in sync.
+                  </p>
+                </div>
+                <SignInDialog
+                  buttonClassName="w-full sm:w-auto"
+                  buttonLabel="Sign in"
+                  providers={providers}
+                />
+              </div>
+            ) : null}
 
             <div className="glass-soft rounded-[1.5rem] p-3 sm:p-4">
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Fasting stages</p>
-                  <p className="mt-2 text-sm text-muted-foreground">Real milestone science mapped across the clock.</p>
+                  <p className="mt-2 text-sm text-muted-foreground">Simple checkpoints to help you pace the window you planned.</p>
                 </div>
                 <Badge
                   variant="outline"
@@ -621,11 +665,11 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col items-start gap-2 border-t border-border/70 bg-background/50 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <span>{activeSession ? "Current fast is synced to Supabase." : "No active fast right now."}</span>
+          <span>{signedIn ? "Progress saved." : "Sign in to save progress."}</span>
           <span>
             {completedCount
-              ? `${completedCount} recent completed sessions loaded.`
-              : "History starts after your first completed fast."}
+              ? `${completedCount} completed session${completedCount === 1 ? "" : "s"} saved so far.`
+              : "Your history starts after the first completed session."}
           </span>
         </CardFooter>
       </Card>
@@ -634,13 +678,13 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
         <Card className="section-enter" style={{ animationDelay: "100ms" }}>
           <CardHeader>
             <CardTitle>Quick stats</CardTitle>
-            <CardDescription>Your synced FastTrack snapshot.</CardDescription>
+            <CardDescription>A simple snapshot of your current rhythm.</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-1">
             {[
-              { label: "Total fasts", value: stats.totalFasts.toString(), icon: Flag },
-              { label: "Total hours", value: stats.totalHours.toString(), icon: Flame },
-              { label: "Average", value: formatCompactDuration(stats.averageMinutes), icon: PauseCircle },
+              { label: "Completed sessions", value: stats.totalFasts.toString(), icon: Flag },
+              { label: "Weekly consistency", value: `${weeklyConsistency}%`, icon: Flame },
+              { label: "Average session", value: formatCompactDuration(stats.averageMinutes), icon: PauseCircle },
               { label: "Current streak", value: `${stats.currentStreak} day${stats.currentStreak === 1 ? "" : "s"}`, icon: Trophy },
             ].map((item) => (
               <div key={item.label} className="glass-soft flex items-center justify-between rounded-[1.4rem] px-3 py-3 sm:px-4">
@@ -661,7 +705,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <CardTitle>Friend feed</CardTitle>
-                <CardDescription>Invite friends, accept requests, and see shared momentum.</CardDescription>
+                <CardDescription>Invite friends, accept requests, and keep accountability close without making it noisy.</CardDescription>
               </div>
               <Badge variant="outline" className="border-primary/30 text-primary">
                 <Users className="mr-2 size-3.5" />
@@ -738,7 +782,11 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
             ) : null}
 
             <div className="space-y-3">
-              {dashboardData.feed.length ? (
+              {!signedIn ? (
+                <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/60 px-5 py-12 text-center text-sm text-muted-foreground">
+                  Sign in to save progress and follow your accountability circle here.
+                </div>
+              ) : dashboardData.feed.length ? (
                 dashboardData.feed.slice(0, 4).map((event) => (
                   <div
                     key={event.id}
@@ -758,7 +806,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
                 ))
               ) : (
                 <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/60 px-5 py-12 text-center text-sm text-muted-foreground">
-                  Accepted friends will appear here when they start, finish, or hit milestones in their fasts.
+                  Friend updates will appear here once your circle starts sharing progress.
                 </div>
               )}
             </div>
@@ -766,6 +814,25 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
             <Button className="w-full" disabled={isRefreshing} onClick={() => void refreshDashboard()}>
               {isRefreshing ? "Refreshing..." : "Refresh feed"}
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="section-enter" style={{ animationDelay: "300ms" }}>
+          <CardHeader>
+            <CardTitle>Use FastTrack responsibly</CardTitle>
+            <CardDescription>FastTrack is built for tracking and accountability, not medical advice.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="glass-soft flex items-start gap-3 rounded-[1.5rem] px-4 py-4 text-sm leading-6 text-muted-foreground">
+              <div className="rounded-2xl bg-amber-500/10 p-2 text-amber-300">
+                <ShieldAlert className="size-4" />
+              </div>
+              <p>
+                FastTrack is a tracking tool, not medical advice. Fasting may not be appropriate for everyone.
+                People under 18, pregnant users, users with diabetes, eating-disorder history, or medical
+                conditions should seek qualified medical guidance before fasting.
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -776,8 +843,8 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
             <DialogTitle>{pendingAction === "complete" ? "Finish this fast?" : "Cancel this fast?"}</DialogTitle>
             <DialogDescription>
               {pendingAction === "complete"
-                ? "This will save the finished session, refresh your streak, and publish the result to your feed."
-                : "This will stop the active timer and log it as cancelled."}
+                ? "This will save the finished session, update your streak, and keep the result in your account."
+                : "This will stop the active timer and mark this session as cancelled."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -808,7 +875,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
             <DialogDescription>
               {activeMilestoneIndex !== null
                 ? `${formatStageHour(FASTING_STAGES[activeMilestoneIndex].hour)} milestone crossed.`
-                : "You just crossed a fasting milestone."}
+                : "You just crossed a fasting checkpoint."}
             </DialogDescription>
           </DialogHeader>
           {activeMilestoneIndex !== null ? (
@@ -847,7 +914,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
             </div>
           ) : null}
           <DialogFooter>
-            <Button onClick={() => setActiveMilestoneIndex(null)}>Keep Going 🔥</Button>
+            <Button onClick={() => setActiveMilestoneIndex(null)}>Keep going</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -924,7 +991,7 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
         <DialogContent className="animate-pop-in">
           <DialogHeader>
             <DialogTitle>LEVEL UP</DialogTitle>
-            <DialogDescription>Your discipline just pushed you into a new tier.</DialogDescription>
+            <DialogDescription>Your steady consistency just moved you into a new level.</DialogDescription>
           </DialogHeader>
           {levelUpSummary ? (
             <div className="glass-soft rounded-[1.5rem] border border-primary/30 px-4 py-5">
@@ -932,12 +999,12 @@ export function FastingTimer({ initialData, userId }: FastingTimerProps) {
                 Level {levelUpSummary.previousLevel} → Level {levelUpSummary.newLevel}
               </p>
               <p className="mt-2 text-sm text-muted-foreground">
-                Keep stacking fasts, XP, and milestones. Your profile and leaderboard rank just moved.
+                Keep showing up for your planned windows. Your profile progress just moved.
               </p>
             </div>
           ) : null}
           <DialogFooter>
-            <Button onClick={() => setLevelUpSummary(null)}>Keep Climbing</Button>
+            <Button onClick={() => setLevelUpSummary(null)}>Keep going</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

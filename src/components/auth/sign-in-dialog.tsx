@@ -14,15 +14,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 type SignInDialogProps = {
+  buttonClassName?: string;
+  buttonLabel?: string;
   providers: {
     google: boolean;
     github: boolean;
   };
+  size?: "default" | "sm" | "lg";
+  variant?: "default" | "outline" | "secondary";
 };
 
-export function SignInDialog({ providers }: SignInDialogProps) {
+export function SignInDialog({
+  buttonClassName,
+  buttonLabel = "Sign in",
+  providers,
+  size = "sm",
+  variant = "default",
+}: SignInDialogProps) {
   const [open, setOpen] = useState(false);
   const [pendingProvider, setPendingProvider] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -39,18 +50,18 @@ export function SignInDialog({ providers }: SignInDialogProps) {
 
   return (
     <>
-      <Button onClick={() => setOpen(true)} size="sm">
-        Sign In
+      <Button className={cn(buttonClassName)} onClick={() => setOpen(true)} size={size} variant={variant}>
+        {buttonLabel}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="border border-border/80 bg-card p-0 sm:max-w-md">
           <DialogHeader className="p-6 pb-3">
             <Badge variant="outline" className="mb-3 w-fit border-primary/30 text-primary">
-              Account Sync
+              FastTrack account
             </Badge>
             <DialogTitle>Join FastTrack</DialogTitle>
             <DialogDescription>
-              Sign in to sync your timer, streaks, and history across devices.
+              Save your window, keep your streak, and stay accountable across your devices.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 px-6 pb-2">
@@ -72,14 +83,13 @@ export function SignInDialog({ providers }: SignInDialogProps) {
             </Button>
             {!hasAnyProvider ? (
               <p className="text-sm text-muted-foreground">
-                OAuth keys are not configured yet. Add the provider env vars in `.env.local`
-                to enable sign-in.
+                Sign-in is being configured for this environment. Please try again shortly.
               </p>
             ) : null}
           </div>
           <DialogFooter className="border-t border-border/70 bg-muted/30 px-6 py-4">
             <p className="w-full text-xs text-muted-foreground">
-              FastTrack currently supports Google and GitHub for the first release.
+              Choose the account you want to use for streaks, history, friends, and saved progress.
             </p>
           </DialogFooter>
         </DialogContent>

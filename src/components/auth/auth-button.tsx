@@ -63,7 +63,7 @@ export function AuthButton({ providers, user }: AuthButtonProps) {
         <DropdownMenuSeparator />
         <DropdownMenuItem className="gap-2 px-3 py-2 text-muted-foreground">
           <Sparkles className="size-4" />
-          Badges, XP, profile, and leaderboard are live.
+          Your progress, badges, and account settings live here.
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem

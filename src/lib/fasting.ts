@@ -154,6 +154,7 @@ export type LeaderboardEntry = {
   xp: number;
   currentStreak: number;
   stat: number;
+  supportingStat: string;
   isCurrentUser: boolean;
 };
 
@@ -444,7 +445,7 @@ export function buildFeedEventCopy(event: FeedEvent) {
   switch (event.eventType) {
     case "fast_started": {
       const plannedMinutes = Number(event.metadata.plannedMinutes ?? 0);
-      return `${actorName} started a ${formatCompactDuration(plannedMinutes)} fast.`;
+      return `${actorName} started a ${formatCompactDuration(plannedMinutes)} window.`;
     }
     case "fast_completed": {
       const durationMinutes = Number(event.metadata.durationMinutes ?? 0);
@@ -453,11 +454,11 @@ export function buildFeedEventCopy(event: FeedEvent) {
     case "milestone_hit": {
       const stageLabel = String(event.metadata.stageLabel ?? "a milestone");
       const thresholdHours = Number(event.metadata.thresholdHours ?? 0);
-      return `${actorName} hit ${thresholdHours}h and reached ${stageLabel}.`;
+      return `${actorName} reached the ${thresholdHours}h ${stageLabel.toLowerCase()} checkpoint.`;
     }
     case "streak_updated": {
       const currentStreak = Number(event.metadata.currentStreak ?? 0);
-      return `${actorName} pushed the streak to ${currentStreak} day${currentStreak === 1 ? "" : "s"}.`;
+      return `${actorName} kept the streak moving at ${currentStreak} day${currentStreak === 1 ? "" : "s"}.`;
     }
     case "badge_earned": {
       const badgeName = String(event.metadata.badgeName ?? "a badge");
@@ -465,7 +466,7 @@ export function buildFeedEventCopy(event: FeedEvent) {
     }
     case "level_up": {
       const level = Number(event.metadata.level ?? 0);
-      return `${actorName} leveled up to Level ${level}.`;
+      return `${actorName} moved up to Level ${level}.`;
     }
     default:
       return `${actorName} shared an update.`;

@@ -172,8 +172,8 @@ export async function getHistoryData(userId: string | null | undefined): Promise
       .from("fast_sessions")
       .select(FAST_SESSION_COLUMNS)
       .eq("user_id", userId)
-      .eq("status", "completed")
-      .order("ended_at", { ascending: false })
+      .neq("status", "active")
+      .order("created_at", { ascending: false })
       .limit(120),
   ]);
 
@@ -197,13 +197,23 @@ export async function getHistoryData(userId: string | null | undefined): Promise
 }
 
 export async function getLeaderboardData(userId: string | null | undefined): Promise<LeaderboardData> {
+  if (!userId) {
+    return {
+      weekly: [],
+      monthly: [],
+      allTime: [],
+    };
+  }
+
+  const rankingIds = [userId, ...(await getAcceptedFriendIds(userId))];
   const supabase = createAdminClient();
   const [profilesResult, sessionsResult] = await Promise.all([
-    supabase.from("profiles").select(PROFILE_COLUMNS),
+    supabase.from("profiles").select(PROFILE_COLUMNS).in("id", rankingIds),
     supabase
       .from("fast_sessions")
-      .select("user_id,duration_minutes,ended_at,status")
+      .select("user_id,duration_minutes,duration_planned_minutes,ended_at,status")
       .eq("status", "completed")
+      .in("user_id", rankingIds)
       .not("ended_at", "is", null),
   ]);
 
@@ -223,9 +233,9 @@ export async function getLeaderboardData(userId: string | null | undefined): Pro
   const monthEnd = endOfMonth(currentDate);
 
   return {
-    weekly: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], weekStart, weekEnd, userId, "hours"),
-    monthly: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], monthStart, monthEnd, userId, "hours"),
-    allTime: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], null, null, userId, "xp"),
+    weekly: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], weekStart, weekEnd, userId),
+    monthly: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], monthStart, monthEnd, userId),
+    allTime: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], null, null, userId),
   };
 }
 
@@ -1124,35 +1134,43 @@ async function getComputedProfileFields(userId: string) {
 
 function buildLeaderboardEntries(
   profiles: ProfileSummary[],
-  sessions: Array<{ user_id: string; duration_minutes: number | null; ended_at: string | null; status: string }>,
+  sessions: Array<{
+    user_id: string;
+    duration_minutes: number | null;
+    duration_planned_minutes: number | null;
+    ended_at: string | null;
+    status: string;
+  }>,
   startDate: Date | null,
   endDate: Date | null,
-  currentUserId: string | null | undefined,
-  mode: "hours" | "xp"
+  currentUserId: string | null | undefined
 ) {
   const statMap = new Map<string, number>();
+  const completionMap = new Map<string, number>();
 
-  if (mode === "xp") {
-    for (const profile of profiles) {
-      statMap.set(profile.id, profile.xp);
+  for (const session of sessions) {
+    if (!session.ended_at) {
+      continue;
     }
-  } else {
-    for (const session of sessions) {
-      if (!session.ended_at) {
-        continue;
-      }
 
-      const endedAt = new Date(session.ended_at);
+    const endedAt = new Date(session.ended_at);
 
-      if (startDate && endedAt < startDate) {
-        continue;
-      }
+    if (startDate && endedAt < startDate) {
+      continue;
+    }
 
-      if (endDate && endedAt > endDate) {
-        continue;
-      }
+    if (endDate && endedAt > endDate) {
+      continue;
+    }
 
-      statMap.set(session.user_id, (statMap.get(session.user_id) ?? 0) + (session.duration_minutes ?? 0) / 60);
+    const plannedMinutes = Math.max(1, session.duration_planned_minutes ?? 0);
+    const completionRatio = (session.duration_minutes ?? 0) / plannedMinutes;
+    const completedWindow = completionRatio >= 0.85;
+
+    completionMap.set(session.user_id, (completionMap.get(session.user_id) ?? 0) + 1);
+
+    if (completedWindow) {
+      statMap.set(session.user_id, (statMap.get(session.user_id) ?? 0) + 1);
     }
   }
 
@@ -1164,11 +1182,17 @@ function buildLeaderboardEntries(
       level: profile.level,
       xp: profile.xp,
       currentStreak: profile.currentStreak,
-      stat: Number((statMap.get(profile.id) ?? 0).toFixed(1)),
+      stat: statMap.get(profile.id) ?? 0,
+      supportingStat: `${completionMap.get(profile.id) ?? 0} completed`,
       isCurrentUser: currentUserId === profile.id,
     }))
     .filter((entry) => entry.stat > 0)
-    .sort((left, right) => right.stat - left.stat || right.xp - left.xp)
+    .sort(
+      (left, right) =>
+        right.stat - left.stat ||
+        right.currentStreak - left.currentStreak ||
+        right.xp - left.xp
+    )
     .map((entry, index) => ({
       rank: index + 1,
       ...entry,

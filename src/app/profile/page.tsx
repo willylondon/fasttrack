@@ -3,6 +3,11 @@ import { AppShell } from "@/components/app-shell";
 import { ProfileView } from "@/components/profile/profile-view";
 import { getProfilePageData } from "@/lib/fasting-data";
 
+export const metadata = {
+  title: "FastTrack — Profile",
+  description: "See your streak, level, badges, notifications, and recent FastTrack activity.",
+};
+
 export default async function ProfilePage() {
   const session = await auth();
   const profile = await getProfilePageData(session?.user?.id);
@@ -10,12 +15,12 @@ export default async function ProfilePage() {
   return (
     <AppShell
       currentPath="/profile"
-      description="Track your level, XP progress, badge cabinet, and recent FastTrack activity."
+      description="See your streak, level, badges, and saved progress in one calm account view."
       providers={authProviders}
       session={session}
-      title="Profile"
+      title="Your progress, all in one place."
     >
-      <ProfileView initialData={profile} />
+      <ProfileView initialData={profile} providers={authProviders} signedIn={Boolean(session?.user?.id)} />
     </AppShell>
   );
 }

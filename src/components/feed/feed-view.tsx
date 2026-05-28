@@ -1,14 +1,24 @@
 "use client";
 
 import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns";
-import { Activity } from "lucide-react";
+import Link from "next/link";
+import { Activity, ArrowRight } from "lucide-react";
 
+import { SignInDialog } from "@/components/auth/sign-in-dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FeedPageData, buildFeedEventCopy } from "@/lib/fasting";
+import { cn } from "@/lib/utils";
 
 type FeedViewProps = {
   initialData: FeedPageData;
+  providers: {
+    google: boolean;
+    github: boolean;
+  };
+  signedIn: boolean;
 };
 
 function getInitials(value?: string | null) {
@@ -36,7 +46,7 @@ function getGroupLabel(date: Date) {
   return format(date, "EEEE, MMM d");
 }
 
-export function FeedView({ initialData }: FeedViewProps) {
+export function FeedView({ initialData, providers, signedIn }: FeedViewProps) {
   const groups = initialData.feed.reduce<Record<string, FeedPageData["feed"]>>((accumulator, event) => {
     const key = getGroupLabel(new Date(event.createdAt));
 
@@ -56,12 +66,46 @@ export function FeedView({ initialData }: FeedViewProps) {
             </div>
             <div>
               <CardTitle>Friend activity</CardTitle>
-              <CardDescription>Accepted friends are grouped into a clean rolling feed.</CardDescription>
+              <CardDescription>
+                See shared progress from the people helping you stay steady, consistent, and accountable.
+              </CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {Object.keys(groups).length ? (
+          {!signedIn ? (
+            <EmptyState
+              eyebrow="Signed out"
+              title="See your accountability feed."
+              description="FastTrack brings friend milestones, completed windows, and streak momentum into one calm timeline. Sign in to follow your circle."
+              actions={
+                <>
+                  <SignInDialog
+                    buttonClassName="w-full sm:w-auto"
+                    buttonLabel="Sign in to save your progress"
+                    providers={providers}
+                    size="lg"
+                  />
+                  <Link href="/friends" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full sm:w-auto")}>
+                    Explore friends
+                  </Link>
+                </>
+              }
+              preview={
+                <div className="space-y-3">
+                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Preview</p>
+                  {[
+                    "Example: Jordan completed a planned 16h window.",
+                    "Example: Maya kept a 5-day consistency streak going.",
+                  ].map((item) => (
+                    <div key={item} className="glass-soft rounded-[1.4rem] px-4 py-4 text-sm text-muted-foreground">
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              }
+            />
+          ) : Object.keys(groups).length ? (
             Object.entries(groups).map(([label, events]) => (
               <section key={label} className="space-y-3">
                 <h2 className="text-xs uppercase tracking-[0.24em] text-muted-foreground">{label}</h2>
@@ -87,10 +131,43 @@ export function FeedView({ initialData }: FeedViewProps) {
               </section>
             ))
           ) : (
-            <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/60 px-5 py-16 text-center text-sm text-muted-foreground">
-              No friend activity yet. Add friends and their fast milestones will appear here.
-            </div>
+            <EmptyState
+              eyebrow="No activity yet"
+              title="Your feed will come to life here."
+              description="When friends start sessions, complete planned windows, and keep streaks moving, you’ll see those updates here."
+              actions={
+                <>
+                  <Link href="/friends" className={cn(buttonVariants({ size: "lg" }), "w-full sm:w-auto")}>
+                    Add friends
+                  </Link>
+                  <Link href="/" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full sm:w-auto")}>
+                    Back to dashboard
+                  </Link>
+                </>
+              }
+              preview={
+                <div className="space-y-3">
+                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Example updates</p>
+                  {[
+                    "Example: Chris completed a planned window.",
+                    "Example: Nia kept her weekly streak moving.",
+                  ].map((item) => (
+                    <div key={item} className="glass-soft rounded-[1.4rem] px-4 py-4 text-sm text-muted-foreground">
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              }
+            />
           )}
+          {signedIn ? (
+            <div className="glass-soft flex items-start gap-3 rounded-[1.5rem] px-4 py-4 text-sm text-muted-foreground">
+              <div className="rounded-2xl bg-primary/10 p-2 text-primary">
+                <ArrowRight className="size-4" />
+              </div>
+              <p>Friend activity is for accountability, not pressure. FastTrack highlights consistency over extreme fasting.</p>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     </div>
