@@ -48,56 +48,56 @@ export const ShareFastCard = forwardRef<HTMLDivElement, ShareFastCardProps>(func
         boxShadow: "0 44px 120px rgba(0, 0, 0, 0.42)",
       }}
     >
-      <div className="flex items-center justify-between px-20 pt-20">
+      <div className="flex items-center justify-between px-20 pt-16">
         <div className="flex items-center gap-5">
           <div className="flex size-20 items-center justify-center rounded-[28px] bg-[linear-gradient(135deg,#8B5CF6_0%,#34d399_100%)] shadow-[0_20px_46px_rgba(139,92,246,0.28)]">
             <div className="size-8 rounded-full border-[6px] border-white/90" />
           </div>
           <div>
-            <p className="font-[family:var(--font-heading)] text-[52px] font-semibold tracking-tight">FastTrack</p>
-            <p className="mt-2 text-[24px] uppercase tracking-[0.38em] text-white/55">Completed session</p>
+            <p className="font-[family:var(--font-heading)] text-[48px] font-semibold tracking-tight">FastTrack</p>
+            <p className="mt-2 text-[22px] uppercase tracking-[0.34em] text-white/55">Completed session</p>
           </div>
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col justify-between px-20 pb-20 pt-16">
+      <div className="flex flex-1 flex-col justify-between px-20 pb-16 pt-12">
         <div>
-          <p className="text-[28px] uppercase tracking-[0.38em] text-white/55">I just finished a fast</p>
-          <h1 className="mt-8 max-w-[760px] font-[family:var(--font-heading)] text-[128px] font-semibold leading-[0.92] tracking-tight text-white">
+          <p className="text-[24px] uppercase tracking-[0.32em] text-white/55">I just finished a fast</p>
+          <h1 className="mt-6 max-w-[760px] font-[family:var(--font-heading)] text-[112px] font-semibold leading-[0.92] tracking-tight text-white">
             {formatLongDuration(durationMinutes)}
           </h1>
 
-          <div className="mt-16 space-y-5">
-            <div className="rounded-[36px] border border-white/10 bg-white/[0.04] px-8 py-7">
-              <p className="text-[22px] uppercase tracking-[0.28em] text-white/55">Started</p>
-              <p className="mt-4 text-[54px] font-medium tracking-tight">{formatTime(startedAt)}</p>
+          <div className="mt-12 space-y-4">
+            <div className="rounded-[34px] border border-white/10 bg-white/[0.04] px-8 py-6">
+              <p className="text-[20px] uppercase tracking-[0.24em] text-white/55">Started</p>
+              <p className="mt-3 text-[48px] font-medium tracking-tight">{formatTime(startedAt)}</p>
             </div>
-            <div className="rounded-[36px] border border-white/10 bg-white/[0.04] px-8 py-7">
-              <p className="text-[22px] uppercase tracking-[0.28em] text-white/55">Ended</p>
-              <p className="mt-4 text-[54px] font-medium tracking-tight">{formatTime(endedAt)}</p>
+            <div className="rounded-[34px] border border-white/10 bg-white/[0.04] px-8 py-6">
+              <p className="text-[20px] uppercase tracking-[0.24em] text-white/55">Ended</p>
+              <p className="mt-3 text-[48px] font-medium tracking-tight">{formatTime(endedAt)}</p>
             </div>
             {plannedMinutes ? (
-              <div className="rounded-[36px] border border-white/10 bg-white/[0.04] px-8 py-7">
-                <p className="text-[22px] uppercase tracking-[0.28em] text-white/55">Window</p>
-                <p className="mt-4 text-[42px] font-medium tracking-tight text-white">
+              <div className="rounded-[34px] border border-white/10 bg-white/[0.04] px-8 py-6">
+                <p className="text-[20px] uppercase tracking-[0.24em] text-white/55">Window</p>
+                <p className="mt-3 text-[38px] font-medium tracking-tight text-white">
                   Planned {formatDuration(plannedMinutes)} / Completed {formatDuration(durationMinutes)}
                 </p>
               </div>
             ) : null}
             {milestoneLabel ? (
-              <div className="rounded-[36px] border border-primary/25 bg-primary/10 px-8 py-7">
-                <p className="text-[22px] uppercase tracking-[0.28em] text-white/55">Checkpoint reached</p>
-                <p className="mt-4 text-[42px] font-medium tracking-tight text-white">{milestoneLabel}</p>
+              <div className="rounded-[34px] border border-primary/25 bg-primary/10 px-8 py-6">
+                <p className="text-[20px] uppercase tracking-[0.24em] text-white/55">Checkpoint reached</p>
+                <p className="mt-3 text-[36px] font-medium tracking-tight text-white">{milestoneLabel}</p>
               </div>
             ) : null}
           </div>
         </div>
 
-        <div className="flex items-end justify-between gap-10 pb-6">
-          <p className="max-w-[520px] text-[28px] leading-[1.45] text-white/62">
+        <div className="flex items-end justify-between gap-8 pt-8">
+          <p className="max-w-[500px] text-[24px] leading-[1.4] text-white/62">
             Build your streak. Track your window. Stay accountable.
           </p>
-          <p className="max-w-[320px] text-right text-[22px] uppercase tracking-[0.22em] leading-[1.2] text-white/62">
+          <p className="max-w-[300px] text-right text-[20px] uppercase tracking-[0.18em] leading-[1.2] text-white/62">
             Tracked with FastTrack
           </p>
         </div>
