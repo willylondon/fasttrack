@@ -21,6 +21,7 @@ import {
 import { Input } from "@/components/ui/input";
 import {
   BadgeDefinition,
+  calculateStats,
   DashboardData,
   EMPTY_DASHBOARD_DATA,
   FastCompletionGamification,
@@ -114,6 +115,7 @@ const CONFETTI_PIECES = Array.from({ length: 26 }, (_, index) => ({
   rotate: `${(index * 21) % 180}deg`,
   color: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
 }));
+const LOCAL_DASHBOARD_STORAGE_KEY = "fasttrack.local-dashboard.v1";
 
 async function readApiError(response: Response) {
   try {
@@ -168,6 +170,46 @@ function getClockValue(value: string | null | undefined) {
   return format(new Date(value ?? Date.now()), "HH:mm");
 }
 
+function readLocalDashboardData() {
+  if (typeof window === "undefined") {
+    return EMPTY_DASHBOARD_DATA;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(LOCAL_DASHBOARD_STORAGE_KEY);
+
+    if (!raw) {
+      return EMPTY_DASHBOARD_DATA;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<DashboardData>;
+
+    return {
+      ...EMPTY_DASHBOARD_DATA,
+      activeSession: parsed.activeSession ?? null,
+      sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
+      milestoneStageReached: typeof parsed.milestoneStageReached === "number" ? parsed.milestoneStageReached : 0,
+    };
+  } catch {
+    return EMPTY_DASHBOARD_DATA;
+  }
+}
+
+function writeLocalDashboardData(data: DashboardData) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(
+    LOCAL_DASHBOARD_STORAGE_KEY,
+    JSON.stringify({
+      activeSession: data.activeSession,
+      sessions: data.sessions,
+      milestoneStageReached: data.milestoneStageReached,
+    })
+  );
+}
+
 export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProps) {
   const [dashboardData, setDashboardData] = useState(initialData);
   const [selectedWindow, setSelectedWindow] = useState<(typeof WINDOW_OPTIONS)[number]["label"]>("16h");
@@ -183,11 +225,27 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   const [startTimeValue, setStartTimeValue] = useState(() => getClockValue(new Date().toISOString()));
   const [startTimeError, setStartTimeError] = useState<string | null>(null);
   const [pendingStartAdjustment, setPendingStartAdjustment] = useState<PendingStartAdjustment | null>(null);
+  const [localDashboardReady, setLocalDashboardReady] = useState(false);
   const milestoneInFlightRef = useRef(false);
 
   useEffect(() => {
-    setDashboardData(initialData ?? EMPTY_DASHBOARD_DATA);
-  }, [initialData]);
+    if (signedIn) {
+      setDashboardData(initialData ?? EMPTY_DASHBOARD_DATA);
+      setLocalDashboardReady(true);
+      return;
+    }
+
+    setDashboardData(readLocalDashboardData());
+    setLocalDashboardReady(true);
+  }, [initialData, signedIn]);
+
+  useEffect(() => {
+    if (signedIn || !localDashboardReady) {
+      return;
+    }
+
+    writeLocalDashboardData(dashboardData);
+  }, [dashboardData, localDashboardReady, signedIn]);
 
   useEffect(() => {
     if (!dashboardData.activeSession) {
@@ -299,6 +357,22 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
 
     milestoneInFlightRef.current = true;
 
+    if (!userId) {
+      setDashboardData((current) => ({
+        ...current,
+        milestoneStageReached: currentStageIndex,
+        activeSession: current.activeSession
+          ? {
+              ...current.activeSession,
+              stageReached: currentStageIndex,
+            }
+          : null,
+      }));
+      setActiveMilestoneIndex(currentStageIndex);
+      milestoneInFlightRef.current = false;
+      return;
+    }
+
     void (async () => {
       try {
         const response = await fetch(`/api/fasts/${activeSession.id}`, {
@@ -333,14 +407,9 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         milestoneInFlightRef.current = false;
       }
     })();
-  }, [activeSession, currentStageIndex, dashboardData.milestoneStageReached]);
+  }, [activeSession, currentStageIndex, dashboardData.milestoneStageReached, userId]);
 
   function openStartTimeDialog(mode: Exclude<StartDialogMode, null>) {
-    if (!userId) {
-      toast.error("Sign in to save your progress.");
-      return;
-    }
-
     if (mode === "start" && activeSession) {
       toast.error("Finish the current fast before starting another.");
       return;
@@ -359,13 +428,52 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   }
 
   async function applyStartTimeChange(payload: PendingStartAdjustment) {
-    if (!userId) {
-      toast.error("Sign in to save your progress.");
+    if (payload.mode === "edit" && !activeSession) {
+      toast.error("No active fast is available to adjust.");
       return;
     }
 
-    if (payload.mode === "edit" && !activeSession) {
-      toast.error("No active fast is available to adjust.");
+    if (!userId) {
+      const stageReached = getStageIndexForMinutes(payload.backdatedMinutes);
+      const localSession =
+        payload.mode === "start"
+          ? {
+              id: `local-${Date.now()}`,
+              userId: "local",
+              startedAt: payload.startedAt,
+              endedAt: null,
+              durationMinutes: null,
+              plannedMinutes,
+              status: "active" as const,
+              notes: null,
+              createdAt: new Date().toISOString(),
+              stageReached,
+            }
+          : activeSession
+            ? {
+                ...activeSession,
+                startedAt: payload.startedAt,
+                stageReached,
+              }
+            : null;
+
+      if (!localSession) {
+        toast.error("No active fast is available to adjust.");
+        return;
+      }
+
+      setNow(Date.now());
+      setDashboardData((current) => ({
+        ...current,
+        activeSession: localSession,
+        milestoneStageReached: stageReached,
+      }));
+      closeStartTimeDialog();
+      toast.success(
+        payload.mode === "start"
+          ? "Fast started. Progress saved on this device."
+          : "Start time updated. Progress recalculated on this device."
+      );
       return;
     }
 
@@ -441,6 +549,45 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
 
   async function resolveSession(action: Exclude<PendingAction, null>) {
     if (!activeSession) {
+      return;
+    }
+
+    if (!userId) {
+      const endedAt = new Date().toISOString();
+      const durationMinutes = Math.max(0, Math.round((Date.parse(endedAt) - Date.parse(activeSession.startedAt)) / 60000));
+      const finalStageReached = Math.max(activeSession.stageReached ?? 0, getStageIndexForMinutes(durationMinutes));
+      const finishedSession = {
+        ...activeSession,
+        endedAt,
+        durationMinutes,
+        status: action === "complete" ? ("completed" as const) : ("cancelled" as const),
+        stageReached: finalStageReached,
+      };
+      const nextSessions = [finishedSession, ...dashboardData.sessions];
+      const nextStats = calculateStats(nextSessions);
+
+      setPendingAction(null);
+      setActiveMilestoneIndex(null);
+      setNow(Date.now());
+      setDashboardData((current) => ({
+        ...current,
+        activeSession: null,
+        sessions: nextSessions,
+        milestoneStageReached: 0,
+      }));
+
+      if (action === "complete") {
+        setCompletionSummary({
+          durationMinutes,
+          stage: getStageForMinutes(durationMinutes),
+          currentStreak: nextStats.currentStreak,
+          totalFasts: nextStats.totalFasts,
+          xpGained: 0,
+          badges: [],
+        });
+      }
+
+      toast.success(action === "complete" ? "Fast complete. Progress saved on this device." : "Fast cancelled.");
       return;
     }
 
