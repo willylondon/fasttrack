@@ -5,6 +5,10 @@ import { getCurrentUserId, startFast } from "@/lib/fasting-data";
 
 const startFastSchema = z.object({
   plannedMinutes: z.number().int().min(12 * 60).max(48 * 60),
+  startedAt: z
+    .string()
+    .refine((value) => !Number.isNaN(Date.parse(value)), "Choose a valid start time.")
+    .optional(),
 });
 
 export async function POST(request: Request) {
@@ -15,7 +19,7 @@ export async function POST(request: Request) {
   }
 
   const payload = startFastSchema.parse(await request.json());
-  const session = await startFast(userId, payload.plannedMinutes);
+  const session = await startFast(userId, payload.plannedMinutes, payload.startedAt);
 
   return NextResponse.json({ session });
 }

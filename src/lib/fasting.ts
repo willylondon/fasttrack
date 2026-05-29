@@ -242,6 +242,9 @@ export const FASTING_PRESETS = [
   { label: "Custom", minutes: 14 * 60 },
 ] as const;
 
+export const MAX_MANUAL_START_BACKDATE_MINUTES = 12 * 60;
+export const MANUAL_START_CONFIRM_MINUTES = 4 * 60;
+
 export const EMPTY_DASHBOARD_DATA: DashboardData = {
   profile: null,
   activeSession: null,
@@ -321,6 +324,70 @@ export function getElapsedMinutes(session: Pick<FastSession, "startedAt"> | null
   }
 
   return Math.max(0, Math.round((now - Date.parse(session.startedAt)) / 60000));
+}
+
+export function validateManualStartTimestamp(
+  startedAt: string,
+  now = Date.now(),
+  maxBackdateMinutes = MAX_MANUAL_START_BACKDATE_MINUTES
+) {
+  const parsed = Date.parse(startedAt);
+
+  if (!Number.isFinite(parsed)) {
+    return {
+      valid: false as const,
+      backdatedMinutes: 0,
+      message: "Choose a valid start time.",
+    };
+  }
+
+  const backdatedMinutes = Math.round((now - parsed) / 60000);
+
+  if (backdatedMinutes < 0) {
+    return {
+      valid: false as const,
+      backdatedMinutes,
+      message: "Start time cannot be in the future.",
+    };
+  }
+
+  if (backdatedMinutes > maxBackdateMinutes) {
+    return {
+      valid: false as const,
+      backdatedMinutes,
+      message: "Start time can only be adjusted within the last 12 hours.",
+    };
+  }
+
+  return {
+    valid: true as const,
+    backdatedMinutes,
+    message: null,
+  };
+}
+
+export function resolveManualStartTimeFromClock(timeValue: string, now = new Date()) {
+  const match = /^(\d{2}):(\d{2})$/.exec(timeValue);
+
+  if (!match) {
+    return null;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+
+  if (hours > 23 || minutes > 59) {
+    return null;
+  }
+
+  const candidate = new Date(now);
+  candidate.setHours(hours, minutes, 0, 0);
+
+  if (candidate.getTime() > now.getTime()) {
+    candidate.setDate(candidate.getDate() - 1);
+  }
+
+  return candidate.toISOString();
 }
 
 export function getProgressPercent(

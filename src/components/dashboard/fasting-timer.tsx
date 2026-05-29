@@ -2,7 +2,7 @@
 
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
-import { Check, Flag, Share2, ShieldAlert, X } from "lucide-react";
+import { Check, Clock3, Flag, PencilLine, Share2, ShieldAlert, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { TimerRing } from "@/components/dashboard/timer-ring";
@@ -30,6 +30,10 @@ import {
   getProgressPercent,
   getStageForMinutes,
   getStageIndexForMinutes,
+  MANUAL_START_CONFIRM_MINUTES,
+  MAX_MANUAL_START_BACKDATE_MINUTES,
+  resolveManualStartTimeFromClock,
+  validateManualStartTimestamp,
 } from "@/lib/fasting";
 import { FASTING_STAGES, type FastingStage } from "@/lib/fasting-stages";
 import { cn } from "@/lib/utils";
@@ -41,6 +45,8 @@ type FastingTimerProps = {
 };
 
 type PendingAction = "complete" | "cancel" | null;
+type StartTimeMode = "now" | "earlier";
+type StartDialogMode = "start" | "edit" | null;
 
 type CompletionSummary = {
   durationMinutes: number;
@@ -54,6 +60,12 @@ type CompletionSummary = {
 type LevelUpSummary = {
   previousLevel: number;
   newLevel: number;
+};
+
+type PendingStartAdjustment = {
+  mode: Exclude<StartDialogMode, null>;
+  startedAt: string;
+  backdatedMinutes: number;
 };
 
 const WINDOW_OPTIONS = [
@@ -155,6 +167,10 @@ function clampCustomHours(value: string) {
   return Math.min(24, Math.max(12, parsed));
 }
 
+function getClockValue(value: string | null | undefined) {
+  return format(new Date(value ?? Date.now()), "HH:mm");
+}
+
 export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProps) {
   const [dashboardData, setDashboardData] = useState(initialData);
   const [selectedWindow, setSelectedWindow] = useState<(typeof WINDOW_OPTIONS)[number]["label"]>("16h");
@@ -165,6 +181,11 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null);
   const [levelUpSummary, setLevelUpSummary] = useState<LevelUpSummary | null>(null);
   const [isMutatingFast, setIsMutatingFast] = useState(false);
+  const [startDialogMode, setStartDialogMode] = useState<StartDialogMode>(null);
+  const [startTimeMode, setStartTimeMode] = useState<StartTimeMode>("now");
+  const [startTimeValue, setStartTimeValue] = useState(() => getClockValue(new Date().toISOString()));
+  const [startTimeError, setStartTimeError] = useState<string | null>(null);
+  const [pendingStartAdjustment, setPendingStartAdjustment] = useState<PendingStartAdjustment | null>(null);
   const milestoneInFlightRef = useRef(false);
 
   useEffect(() => {
@@ -195,6 +216,44 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   const remainingMinutes = activeSession ? Math.max(activeSession.plannedMinutes - elapsedMinutes, 0) : plannedMinutes;
   const statusLabel = getStatusLabel(Boolean(activeSession), currentStage, remainingMinutes);
   const hourlyCheckIn = getHourlyCheckIn(elapsedMinutes / 60, Boolean(activeSession));
+  const selectedStartPreview = (() => {
+    if (!startDialogMode) {
+      return null;
+    }
+
+    if (startTimeMode === "now") {
+      const startedAt = new Date().toISOString();
+
+      return {
+        startedAt,
+        backdatedMinutes: 0,
+        error: null,
+      };
+    }
+
+    const startedAt = resolveManualStartTimeFromClock(startTimeValue, new Date());
+
+    if (!startedAt) {
+      return {
+        startedAt: null,
+        backdatedMinutes: 0,
+        error: "Choose a valid start time.",
+      };
+    }
+
+    const validation = validateManualStartTimestamp(startedAt, Date.now(), MAX_MANUAL_START_BACKDATE_MINUTES);
+
+    return {
+      startedAt: validation.valid ? startedAt : null,
+      backdatedMinutes: validation.backdatedMinutes,
+      error: validation.message,
+    };
+  })();
+  const previewPlannedMinutes = activeSession?.plannedMinutes ?? plannedMinutes;
+  const previewElapsedMinutes = selectedStartPreview?.backdatedMinutes ?? 0;
+  const previewRemainingMinutes = Math.max(previewPlannedMinutes - previewElapsedMinutes, 0);
+  const previewStage = getStageForMinutes(previewElapsedMinutes);
+  const showExtendedWindowWarning = previewElapsedMinutes >= 18 * 60;
 
   const refreshDashboard = useCallback(async () => {
     if (!userId) {
@@ -279,27 +338,58 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     })();
   }, [activeSession, currentStageIndex, dashboardData.milestoneStageReached]);
 
-  async function startFast() {
+  function openStartTimeDialog(mode: Exclude<StartDialogMode, null>) {
     if (!userId) {
       toast.error("Sign in to save your progress.");
       return;
     }
 
-    if (activeSession) {
+    if (mode === "start" && activeSession) {
       toast.error("Finish the current fast before starting another.");
+      return;
+    }
+
+    setStartDialogMode(mode);
+    setStartTimeError(null);
+    setStartTimeMode(mode === "edit" ? "earlier" : "now");
+    setStartTimeValue(getClockValue(mode === "edit" ? activeSession?.startedAt : new Date().toISOString()));
+  }
+
+  function closeStartTimeDialog() {
+    setStartDialogMode(null);
+    setStartTimeError(null);
+    setPendingStartAdjustment(null);
+  }
+
+  async function applyStartTimeChange(payload: PendingStartAdjustment) {
+    if (!userId) {
+      toast.error("Sign in to save your progress.");
+      return;
+    }
+
+    if (payload.mode === "edit" && !activeSession) {
+      toast.error("No active fast is available to adjust.");
       return;
     }
 
     setIsMutatingFast(true);
 
     try {
-      const response = await fetch("/api/fasts", {
-        method: "POST",
+      const response = await fetch(payload.mode === "start" ? "/api/fasts" : `/api/fasts/${activeSession?.id}`, {
+        method: payload.mode === "start" ? "POST" : "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          plannedMinutes,
+          ...(payload.mode === "start"
+            ? {
+                plannedMinutes,
+                startedAt: payload.startedAt,
+              }
+            : {
+                action: "edit_start",
+                startedAt: payload.startedAt,
+              }),
         }),
       });
 
@@ -307,20 +397,49 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         throw new Error(await readApiError(response));
       }
 
-      const payload = (await response.json()) as { session: DashboardData["activeSession"] };
+      const responsePayload = (await response.json()) as { session: DashboardData["activeSession"] };
       setNow(Date.now());
       setDashboardData((current) => ({
         ...current,
-        activeSession: payload.session,
-        milestoneStageReached: 0,
+        activeSession: responsePayload.session,
+        milestoneStageReached: responsePayload.session?.stageReached ?? 0,
       }));
       await refreshDashboard();
-      toast.success("Fast started. Progress saved.");
+      closeStartTimeDialog();
+      toast.success(payload.mode === "start" ? "Fast started. Progress saved." : "Start time updated. Progress recalculated.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to start fast.");
+      toast.error(error instanceof Error ? error.message : "Unable to save this start time.");
     } finally {
       setIsMutatingFast(false);
     }
+  }
+
+  async function submitStartTimeChange() {
+    if (!startDialogMode || !selectedStartPreview) {
+      return;
+    }
+
+    if (selectedStartPreview.error || !selectedStartPreview.startedAt) {
+      setStartTimeError(selectedStartPreview.error ?? "Choose a valid start time.");
+      return;
+    }
+
+    setStartTimeError(null);
+
+    if (selectedStartPreview.backdatedMinutes > MANUAL_START_CONFIRM_MINUTES) {
+      setPendingStartAdjustment({
+        mode: startDialogMode,
+        startedAt: selectedStartPreview.startedAt,
+        backdatedMinutes: selectedStartPreview.backdatedMinutes,
+      });
+      return;
+    }
+
+    await applyStartTimeChange({
+      mode: startDialogMode,
+      startedAt: selectedStartPreview.startedAt,
+      backdatedMinutes: selectedStartPreview.backdatedMinutes,
+    });
   }
 
   async function resolveSession(action: Exclude<PendingAction, null>) {
@@ -483,6 +602,10 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                       <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Current status</p>
                       <p className="mt-2 text-base font-medium text-foreground">{statusLabel}</p>
                     </div>
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      Choose <span className="font-medium text-foreground">Now</span> or set a recent start time if your
+                      fasting window began before you opened FastTrack.
+                    </p>
                   </div>
                 </div>
               ) : (
@@ -525,7 +648,12 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
 
               <div className="grid gap-3">
                 {!activeSession ? (
-                  <Button className="h-12 w-full text-base font-semibold text-white" disabled={isMutatingFast} onClick={startFast} size="lg">
+                  <Button
+                    className="h-12 w-full text-base font-semibold text-white"
+                    disabled={isMutatingFast}
+                    onClick={() => openStartTimeDialog("start")}
+                    size="lg"
+                  >
                     <Flag className="size-4" />
                     Start fast
                   </Button>
@@ -539,6 +667,16 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                     >
                       <Check className="size-4" />
                       End fast
+                    </Button>
+                    <Button
+                      className="h-11 w-full"
+                      disabled={isMutatingFast}
+                      onClick={() => openStartTimeDialog("edit")}
+                      size="lg"
+                      variant="outline"
+                    >
+                      <PencilLine className="size-4" />
+                      Edit start time
                     </Button>
                     <button
                       className="min-h-[44px] text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -570,6 +708,175 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
           </div>
         </CardContent>
       </Card>
+
+      {startDialogMode && !pendingStartAdjustment ? (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open) {
+              closeStartTimeDialog();
+            }
+          }}
+        >
+          <DialogContent className="mx-2 max-w-[calc(100vw-1rem)] sm:mx-auto sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>When did your fast start?</DialogTitle>
+              <DialogDescription>
+                {startDialogMode === "start"
+                  ? "Choose now or set the time your fasting window actually began."
+                  : "Adjust the active session so it reflects when your fasting window actually began."}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {([
+                  { label: "Now", value: "now" },
+                  { label: "Started earlier", value: "earlier" },
+                ] as const).map((option) => {
+                  const active = option.value === startTimeMode;
+
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      aria-pressed={active}
+                      className={cn(
+                        "min-h-[48px] rounded-2xl border px-4 py-3 text-left text-sm font-medium transition-colors",
+                        active
+                          ? "border-primary bg-primary/15 text-primary shadow-[0_12px_26px_rgba(139,92,246,0.18)]"
+                          : "border-white/[0.08] bg-white/[0.04] text-foreground hover:border-white/[0.14]"
+                      )}
+                      onClick={() => {
+                        setStartTimeMode(option.value);
+                        setStartTimeError(null);
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {startTimeMode === "earlier" ? (
+                <div className="space-y-2">
+                  <label className="text-xs uppercase tracking-[0.24em] text-muted-foreground" htmlFor="start-time">
+                    Start time
+                  </label>
+                  <Input
+                    id="start-time"
+                    type="time"
+                    inputMode="numeric"
+                    value={startTimeValue}
+                    onChange={(event) => {
+                      setStartTimeValue(event.target.value);
+                      setStartTimeError(null);
+                    }}
+                  />
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    You’re adjusting your start time. Make sure this reflects when your fasting window actually began.
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="glass-soft rounded-[1.5rem] px-4 py-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Started</p>
+                    <p className="mt-2 text-base font-medium text-foreground">
+                      {selectedStartPreview?.startedAt ? formatTime(selectedStartPreview.startedAt) : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Ends</p>
+                    <p className="mt-2 text-base font-medium text-foreground">
+                      {selectedStartPreview?.startedAt
+                        ? formatTime(
+                            new Date(
+                              Date.parse(selectedStartPreview.startedAt) + previewPlannedMinutes * 60000
+                            ).toISOString()
+                          )
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Elapsed</p>
+                    <p className="mt-2 text-base font-medium text-foreground">{formatDuration(previewElapsedMinutes)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Remaining</p>
+                    <p className="mt-2 text-base font-medium text-foreground">{formatDuration(previewRemainingMinutes)}</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Current status</p>
+                    <p className="mt-2 text-base font-medium text-foreground">{previewStage.label}</p>
+                  </div>
+                </div>
+              </div>
+
+              {(selectedStartPreview?.backdatedMinutes ?? 0) > MANUAL_START_CONFIRM_MINUTES ? (
+                <div className="rounded-[1.4rem] border border-amber-400/30 bg-amber-500/10 px-4 py-4 text-sm leading-6 text-amber-100">
+                  This adjustment moves the start time back more than four hours. Double-check that it reflects when your
+                  fasting window actually began.
+                </div>
+              ) : null}
+
+              {showExtendedWindowWarning ? (
+                <div className="rounded-[1.4rem] border border-amber-400/30 bg-amber-500/10 px-4 py-4 text-sm leading-6 text-amber-100">
+                  This places you in an extended fasting window. Stay within your plan and stop if you feel unwell.
+                </div>
+              ) : null}
+
+              {startTimeError ? <p className="text-sm text-destructive">{startTimeError}</p> : null}
+            </div>
+
+            <DialogFooter>
+              <Button onClick={closeStartTimeDialog} variant="outline">
+                Keep current
+              </Button>
+              <Button disabled={isMutatingFast} onClick={() => void submitStartTimeChange()}>
+                <Clock3 className="mr-2 size-4" />
+                {startDialogMode === "start" ? "Start fast" : "Save start time"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
+      {pendingStartAdjustment ? (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open) {
+              setPendingStartAdjustment(null);
+            }
+          }}
+        >
+          <DialogContent className="mx-2 max-w-[calc(100vw-1rem)] sm:mx-auto sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Confirm adjusted start time</DialogTitle>
+              <DialogDescription>
+                You’re adjusting your start time. Make sure this reflects when your fasting window actually began.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="rounded-[1.4rem] border border-amber-400/30 bg-amber-500/10 px-4 py-4 text-sm leading-6 text-amber-100">
+              This change backdates the session by {formatCompactDuration(pendingStartAdjustment.backdatedMinutes)}.
+              Use it only when you are correcting the actual start of the window.
+            </div>
+            <DialogFooter>
+              <Button onClick={() => setPendingStartAdjustment(null)} variant="outline">
+                Review time
+              </Button>
+              <Button
+                disabled={isMutatingFast}
+                onClick={() => void applyStartTimeChange(pendingStartAdjustment)}
+              >
+                Confirm adjustment
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       {pendingAction ? (
         <Dialog open onOpenChange={(open) => setPendingAction(open ? pendingAction : null)}>

@@ -34,6 +34,7 @@ import {
   mapFastSession,
   mapFeedEvent,
   mapProfile,
+  validateManualStartTimestamp,
 } from "@/lib/fasting";
 import { checkBadges, ensureBadgeCatalogSeeded } from "@/lib/gamification/badges";
 import { calculateLevel, xpForFasting } from "@/lib/gamification/xp";
@@ -483,7 +484,7 @@ export async function updateLiveStatusSharing(userId: string, shareLiveStatus: b
   return mapProfile(result.data);
 }
 
-export async function startFast(userId: string, plannedMinutes: number) {
+export async function startFast(userId: string, plannedMinutes: number, startedAt?: string | null) {
   const supabase = createAdminClient();
   const existingActive = await supabase
     .from("fast_sessions")
@@ -501,14 +502,24 @@ export async function startFast(userId: string, plannedMinutes: number) {
     throw new Error("You already have an active fast.");
   }
 
+  const startedAtValue = startedAt ?? new Date().toISOString();
+  const startTimeValidation = validateManualStartTimestamp(startedAtValue);
+
+  if (!startTimeValidation.valid) {
+    throw new Error(startTimeValidation.message);
+  }
+
+  const initialStageReached = getStageIndexForMinutes(startTimeValidation.backdatedMinutes);
+
   const insertResult = await supabase
     .from("fast_sessions")
     .insert({
       user_id: userId,
-      started_at: new Date().toISOString(),
+      started_at: startedAtValue,
       duration_planned_minutes: plannedMinutes,
       status: "active",
       notes: null,
+      stage_reached: initialStageReached,
     })
     .select(FAST_SESSION_COLUMNS)
     .single();
@@ -523,6 +534,52 @@ export async function startFast(userId: string, plannedMinutes: number) {
   });
 
   return mapFastSession(insertResult.data);
+}
+
+export async function updateFastStartTime(userId: string, sessionId: string, startedAt: string) {
+  const supabase = createAdminClient();
+  const sessionResult = await supabase
+    .from("fast_sessions")
+    .select(FAST_SESSION_COLUMNS)
+    .eq("id", sessionId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (sessionResult.error) {
+    throw sessionResult.error;
+  }
+
+  if (!sessionResult.data) {
+    throw new Error("Fast session not found.");
+  }
+
+  if (sessionResult.data.status !== "active") {
+    throw new Error("Only active fasts can be adjusted.");
+  }
+
+  const startTimeValidation = validateManualStartTimestamp(startedAt);
+
+  if (!startTimeValidation.valid) {
+    throw new Error(startTimeValidation.message);
+  }
+
+  const stageReached = getStageIndexForMinutes(startTimeValidation.backdatedMinutes);
+  const updateResult = await supabase
+    .from("fast_sessions")
+    .update({
+      started_at: startedAt,
+      stage_reached: stageReached,
+    })
+    .eq("id", sessionId)
+    .eq("user_id", userId)
+    .select(FAST_SESSION_COLUMNS)
+    .single();
+
+  if (updateResult.error) {
+    throw updateResult.error;
+  }
+
+  return mapFastSession(updateResult.data);
 }
 
 export async function updateFast(
