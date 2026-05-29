@@ -6,6 +6,12 @@ export type FastingStage = {
   color: string;
 };
 
+export type FastingMilestone = {
+  hour: number;
+  label: string;
+  color: string;
+};
+
 export const FASTING_STAGES: FastingStage[] = [
   {
     hour: 0,
@@ -23,7 +29,7 @@ export const FASTING_STAGES: FastingStage[] = [
   },
   {
     hour: 4,
-    label: "Energy adjusting",
+    label: "Energy shifting",
     emoji: "○",
     description: "This is a common point for cravings or distraction. Pause, reset, and stick to the plan that feels reasonable for you.",
     color: "#a78bfa",
@@ -51,7 +57,7 @@ export const FASTING_STAGES: FastingStage[] = [
   },
   {
     hour: 12,
-    label: "Common fasting window",
+    label: "Deeper fasting window",
     emoji: "⬢",
     description: "This is where many planned windows land. Finish strong if this matches your schedule and comfort level.",
     color: "#ef4444",
@@ -65,46 +71,57 @@ export const FASTING_STAGES: FastingStage[] = [
   },
   {
     hour: 16,
-    label: "Planned window milestone",
+    label: "Common fasting goal",
     emoji: "◆",
     description: "A common target for structured fasting routines. Consistency at your planned window matters more than going longer.",
     color: "#8b5cf6",
   },
   {
     hour: 18,
-    label: "Extended window",
+    label: "Advanced window — use caution",
     emoji: "⬡",
     description: "This is a longer session. Continue only if it matches your plan and you feel well enough to do so.",
     color: "#a855f7",
   },
   {
     hour: 20,
-    label: "Extended window",
+    label: "Advanced window — use caution",
     emoji: "▣",
     description: "Longer sessions call for caution. If this is unusual for you, consider ending here and returning to your regular routine.",
     color: "#d946ef",
   },
   {
     hour: 24,
-    label: "Advanced window — use caution",
+    label: "Extended window — medical caution",
     emoji: "▲",
-    description: "This is beyond the range many people use day to day. Avoid treating longer sessions as a badge of discipline on their own.",
+    description: "This is an extended window. Medical guidance matters if longer fasting is part of your routine.",
     color: "#f59e0b",
   },
   {
     hour: 36,
-    label: "Advanced window — use caution",
+    label: "Extended window — medical caution",
     emoji: "■",
-    description: "If you are here, check in carefully. Longer fasting may not be appropriate without qualified guidance.",
+    description: "This is an extended window. Check in carefully and seek qualified guidance if longer fasting is part of your routine.",
     color: "#10b981",
   },
   {
     hour: 48,
-    label: "Stop and reassess",
+    label: "Extended window — medical caution",
     emoji: "✧",
     description: "FastTrack does not encourage pushing far beyond your usual plan. Stop, reassess, and seek qualified guidance if needed.",
     color: "#06b6d4",
   },
+] as const;
+
+export const FASTING_MILESTONES: FastingMilestone[] = [
+  { hour: 0, label: "Fed state", color: "#6366f1" },
+  { hour: 2, label: "Settling in", color: "#818cf8" },
+  { hour: 4, label: "Energy shifting", color: "#a78bfa" },
+  { hour: 8, label: "Fat-use window", color: "#f59e0b" },
+  { hour: 12, label: "Deeper fasting window", color: "#ef4444" },
+  { hour: 16, label: "Common fasting goal", color: "#8b5cf6" },
+  { hour: 18, label: "Advanced window — use caution", color: "#d946ef" },
+  { hour: 24, label: "Extended window — medical caution", color: "#06b6d4" },
 ] as const;
 
 export function getCurrentStage(elapsedHours: number) {
@@ -115,4 +132,14 @@ export function getCurrentStage(elapsedHours: number) {
 
 export function getCurrentStageIndex(elapsedHours: number) {
   return FASTING_STAGES.findIndex((stage) => stage.hour === getCurrentStage(elapsedHours).hour);
+}
+
+export function getCurrentMilestone(elapsedHours: number) {
+  return FASTING_MILESTONES.reduce((currentMilestone, milestone) => {
+    return elapsedHours >= milestone.hour ? milestone : currentMilestone;
+  }, FASTING_MILESTONES[0]);
+}
+
+export function getNextMilestone(elapsedHours: number) {
+  return FASTING_MILESTONES.find((milestone) => milestone.hour > elapsedHours) ?? null;
 }

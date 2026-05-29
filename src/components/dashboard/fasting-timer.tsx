@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import { Check, Clock3, Flag, PencilLine, Share2, ShieldAlert, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { FastingMilestoneBar } from "@/components/dashboard/fasting-milestone-bar";
 import { TimerRing } from "@/components/dashboard/timer-ring";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -143,10 +144,6 @@ function getStatusLabel(active: boolean, currentStage: FastingStage, remainingMi
   }
 
   return currentStage.label;
-}
-
-function getNextMilestone(elapsedHours: number) {
-  return FASTING_STAGES.find((stage) => stage.hour > elapsedHours) ?? null;
 }
 
 function formatTime(value: string | null) {
@@ -691,6 +688,13 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
               </div>
             </div>
           </div>
+
+          <FastingMilestoneBar
+            active={Boolean(activeSession)}
+            elapsedMinutes={elapsedMinutes}
+            plannedMinutes={activeSession?.plannedMinutes ?? plannedMinutes}
+            startedAt={activeSession?.startedAt ?? null}
+          />
         </CardContent>
       </Card>
 
