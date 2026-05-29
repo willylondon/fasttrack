@@ -2,10 +2,12 @@
 
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
+import { toBlob } from "html-to-image";
 import { Check, Clock3, Flag, PencilLine, Share2, ShieldAlert, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { FastingMilestoneBar } from "@/components/dashboard/fasting-milestone-bar";
+import { ShareFastCard } from "@/components/dashboard/share-fast-card";
 import { TimerRing } from "@/components/dashboard/timer-ring";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -53,6 +55,9 @@ type StartDialogMode = "start" | "edit" | null;
 type CompletionSummary = {
   durationMinutes: number;
   stage: FastingStage;
+  startedAt: string;
+  endedAt: string;
+  plannedMinutes: number;
   currentStreak: number;
   totalFasts: number;
   xpGained: number;
@@ -220,6 +225,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null);
   const [levelUpSummary, setLevelUpSummary] = useState<LevelUpSummary | null>(null);
   const [isMutatingFast, setIsMutatingFast] = useState(false);
+  const [isSharingResult, setIsSharingResult] = useState(false);
   const [startDialogMode, setStartDialogMode] = useState<StartDialogMode>(null);
   const [startTimeMode, setStartTimeMode] = useState<StartTimeMode>("now");
   const [startTimeValue, setStartTimeValue] = useState(() => getClockValue(new Date().toISOString()));
@@ -227,6 +233,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   const [pendingStartAdjustment, setPendingStartAdjustment] = useState<PendingStartAdjustment | null>(null);
   const [localDashboardReady, setLocalDashboardReady] = useState(false);
   const milestoneInFlightRef = useRef(false);
+  const shareCardRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (signedIn) {
@@ -580,6 +587,9 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         setCompletionSummary({
           durationMinutes,
           stage: getStageForMinutes(durationMinutes),
+          startedAt: finishedSession.startedAt,
+          endedAt: finishedSession.endedAt ?? endedAt,
+          plannedMinutes: finishedSession.plannedMinutes,
           currentStreak: nextStats.currentStreak,
           totalFasts: nextStats.totalFasts,
           xpGained: 0,
@@ -625,6 +635,9 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         setCompletionSummary({
           durationMinutes: finishedSession.durationMinutes ?? 0,
           stage,
+          startedAt: finishedSession.startedAt,
+          endedAt: finishedSession.endedAt ?? new Date().toISOString(),
+          plannedMinutes: finishedSession.plannedMinutes,
           currentStreak: nextDashboard?.profile?.currentStreak ?? dashboardData.profile?.currentStreak ?? 0,
           totalFasts: nextDashboard?.profile?.totalFasts ?? (dashboardData.profile?.totalFasts ?? 0) + 1,
           xpGained: payload.gamification?.xpGained ?? 0,
@@ -649,17 +662,59 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   }
 
   async function shareCompletion() {
-    if (!completionSummary) {
+    if (!completionSummary || !shareCardRef.current) {
       return;
     }
 
-    const shareText = `I just completed ${formatCompactDuration(completionSummary.durationMinutes)} on FastTrack. Reached: ${completionSummary.stage.label} ${completionSummary.stage.emoji} fasttrack-alpha.vercel.app`;
+    setIsSharingResult(true);
 
     try {
-      await navigator.clipboard.writeText(shareText);
-      toast.success("Result copied to clipboard.");
-    } catch {
-      toast.error("Clipboard share is unavailable on this device.");
+      const blob = await toBlob(shareCardRef.current, {
+        cacheBust: true,
+        pixelRatio: 1,
+        canvasWidth: 1080,
+        canvasHeight: 1350,
+        backgroundColor: "#0b0b0b",
+      });
+
+      if (!blob) {
+        throw new Error("Share image generation failed.");
+      }
+
+      const filename = `fasttrack-fast-${format(new Date(completionSummary.endedAt), "yyyy-MM-dd-HHmm")}.png`;
+      const file = new File([blob], filename, { type: "image/png" });
+      const shareData = {
+        files: [file],
+        title: "FastTrack result",
+        text: `Fast completed • ${formatCompactDuration(completionSummary.durationMinutes)} • Tracked with FastTrack`,
+      };
+
+      if (
+        typeof navigator !== "undefined" &&
+        "share" in navigator &&
+        "canShare" in navigator &&
+        navigator.canShare(shareData)
+      ) {
+        await navigator.share(shareData);
+        toast.success("Result shared.");
+        return;
+      }
+
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(blobUrl);
+      toast.success("Result downloaded as PNG.");
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
+      }
+
+      toast.error(error instanceof Error ? error.message : "Unable to generate the share image.");
+    } finally {
+      setIsSharingResult(false);
     }
   }
 
@@ -1115,8 +1170,28 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                   {formatDuration(completionSummary.durationMinutes)}
                 </p>
                 <p className="mt-2 text-base text-muted-foreground">
-                  Reached {completionSummary.stage.label}
+                  Completed session
                 </p>
+              </div>
+              <div className="glass-soft grid gap-3 rounded-[1.5rem] px-4 py-4 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Started</p>
+                  <p className="mt-2 text-base font-medium text-foreground">{formatTime(completionSummary.startedAt)}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Ended</p>
+                  <p className="mt-2 text-base font-medium text-foreground">{formatTime(completionSummary.endedAt)}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Planned window</p>
+                  <p className="mt-2 text-base font-medium text-foreground">
+                    {formatDuration(completionSummary.plannedMinutes)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Checkpoint</p>
+                  <p className="mt-2 text-base font-medium text-foreground">{completionSummary.stage.label}</p>
+                </div>
               </div>
               <div className="glass-soft grid gap-4 rounded-[1.5rem] px-4 py-4 sm:grid-cols-2">
                 <div>
@@ -1154,15 +1229,31 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                 </div>
               ) : null}
               <DialogFooter>
-                <Button onClick={() => void shareCompletion()} variant="secondary">
+                <Button disabled={isSharingResult} onClick={() => void shareCompletion()} variant="secondary">
                   <Share2 className="mr-2 size-4" />
-                  Share result
+                  {isSharingResult ? "Preparing image..." : "Share result"}
                 </Button>
                 <Button onClick={() => setCompletionSummary(null)}>Done</Button>
               </DialogFooter>
             </div>
           </DialogContent>
         </Dialog>
+      ) : null}
+
+      {completionSummary ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed -left-[200vw] top-0 z-[-1]"
+        >
+          <ShareFastCard
+            ref={shareCardRef}
+            durationMinutes={completionSummary.durationMinutes}
+            endedAt={completionSummary.endedAt}
+            milestoneLabel={completionSummary.stage.label}
+            plannedMinutes={completionSummary.plannedMinutes}
+            startedAt={completionSummary.startedAt}
+          />
+        </div>
       ) : null}
 
       {levelUpSummary ? (
