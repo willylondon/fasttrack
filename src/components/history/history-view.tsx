@@ -12,6 +12,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HistoryData, buildHistorySeries, calculateStats, formatCompactDuration } from "@/lib/fasting";
+import { buildSignedOutHistoryData, readLocalDashboardData } from "@/lib/local-dashboard";
 import { cn } from "@/lib/utils";
 
 type HistoryViewProps = {
@@ -27,8 +28,13 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
   const [history, setHistory] = useState(initialData);
 
   useEffect(() => {
+    if (!signedIn) {
+      setHistory(buildSignedOutHistoryData(readLocalDashboardData()));
+      return;
+    }
+
     setHistory(initialData);
-  }, [initialData]);
+  }, [initialData, signedIn]);
 
   const stats = calculateStats(history.sessions, history.profile);
   const chartData = buildHistorySeries(history.sessions);
@@ -48,17 +54,17 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
     )
   );
 
-  if (!signedIn) {
+  if (!signedIn && !resolvedSessions.length) {
     return (
       <EmptyState
         eyebrow="History"
         title="Your fasting history will appear here."
-        description="Track completed windows, trend lines, streaks, and recent sessions once you sign in and start saving progress."
+        description="Completed windows saved on this device will appear here. Sign in to keep your history synced across devices."
         actions={
           <>
             <SignInDialog
               buttonClassName="w-full sm:w-auto"
-              buttonLabel="Sign in to save your progress"
+              buttonLabel="Sign in to sync your history"
               providers={providers}
               size="lg"
             />
@@ -78,6 +84,25 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
 
   return (
     <div className="grid gap-6">
+      {!signedIn ? (
+        <Card className="section-enter border-accent/25 bg-accent/5" style={{ animationDelay: "0ms" }}>
+          <CardHeader className="gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle>Saved on this device</CardTitle>
+              <CardDescription>
+                Your recent sessions are available here locally. Sign in to keep your progress synced across devices.
+              </CardDescription>
+            </div>
+            <SignInDialog
+              buttonClassName="w-full sm:w-auto"
+              buttonLabel="Sign in to sync your history"
+              providers={providers}
+              size="lg"
+            />
+          </CardHeader>
+        </Card>
+      ) : null}
+
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
         {[
           { label: "Completed sessions", value: stats.totalFasts.toString() },

@@ -110,17 +110,17 @@ export function FeedView({ initialData, providers, signedIn }: FeedViewProps) {
             <EmptyState
               eyebrow="Signed out"
               title="See your accountability feed."
-              description="FastTrack brings friend milestones, completed windows, and streak momentum into one calm timeline. Sign in to follow your circle."
+              description="FastTrack brings friend milestones, completed windows, and streak momentum into one calm timeline. Sign in to save your progress and follow your circle across devices."
               actions={
                 <>
                   <SignInDialog
                     buttonClassName="w-full sm:w-auto"
-                    buttonLabel="Sign in to save your progress"
+                    buttonLabel="Sign in to sync your progress"
                     providers={providers}
                     size="lg"
                   />
-                  <Link href="/friends" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full sm:w-auto")}>
-                    Explore friends
+                  <Link href="/" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full sm:w-auto")}>
+                    Back to dashboard
                   </Link>
                 </>
               }

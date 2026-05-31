@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getErrorMessage, jsonMessage } from "@/lib/api-responses";
 import { getCurrentUserId, getHistoryData } from "@/lib/fasting-data";
 
 export async function GET() {
@@ -9,7 +10,11 @@ export async function GET() {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const history = await getHistoryData(userId);
+  try {
+    const history = await getHistoryData(userId);
 
-  return NextResponse.json(history);
+    return NextResponse.json(history);
+  } catch (error) {
+    return jsonMessage(getErrorMessage(error, "Unable to load history."), 500);
+  }
 }

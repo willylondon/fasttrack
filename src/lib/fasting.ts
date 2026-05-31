@@ -2,10 +2,10 @@ import { differenceInCalendarDays, format, parseISO } from "date-fns";
 
 import {
   FASTING_STAGES,
-  FastingStage,
   getCurrentStage,
   getCurrentStageIndex,
 } from "@/lib/fasting-stages";
+import type { FastingStage } from "@/lib/fasting-stages";
 
 export type FastStatus = "active" | "completed" | "cancelled";
 export type FeedEventType =
@@ -88,6 +88,7 @@ export type FriendLiveSession = {
   avatarUrl: string | null;
   startedAt: string;
   plannedMinutes: number;
+  isCurrentUser?: boolean;
 };
 
 export type FriendListItem = {
@@ -167,6 +168,11 @@ export type LeaderboardEntry = {
   currentStreak: number;
   stat: number;
   supportingStat: string;
+  currentStage: {
+    label: string;
+    color: string;
+    elapsedMinutes: number;
+  } | null;
   isCurrentUser: boolean;
 };
 
@@ -235,13 +241,72 @@ type DatabaseBadge = {
   xp_reward: number;
 };
 
+export type ChallengeType = "streak_days" | "total_hours" | "daily_fast" | "milestone_reach";
+
+export type Challenge = {
+  id: string;
+  title: string;
+  description: string | null;
+  challengeType: ChallengeType;
+  targetValue: number;
+  durationDays: number;
+  startsAt: string;
+  endsAt: string;
+  isPublic: boolean;
+  creatorId: string;
+  createdAt: string;
+  participantCount: number;
+  creator: {
+    displayName: string | null;
+    avatarUrl: string | null;
+  };
+};
+
+export type ChallengeParticipant = {
+  userId: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  progress: number;
+  completed: boolean;
+  completedAt: string | null;
+  joinedAt: string;
+};
+
+export type ChallengeDetail = Challenge & {
+  participants: ChallengeParticipant[];
+  isParticipant: boolean;
+  isCreator: boolean;
+};
+
+export type ChallengesListData = {
+  active: Challenge[];
+  joinable: Challenge[];
+  past: Challenge[];
+};
+
+export const CHALLENGE_TYPE_LABELS: Record<ChallengeType, string> = {
+  streak_days: "Streak Days",
+  total_hours: "Total Hours",
+  daily_fast: "Daily Fasts",
+  milestone_reach: "Milestone Reaches",
+};
+
+export const CHALLENGE_TYPE_ICONS: Record<ChallengeType, string> = {
+  streak_days: "🔥",
+  total_hours: "⏱️",
+  daily_fast: "📅",
+  milestone_reach: "🎯",
+};
+
 export const FASTING_PRESETS = [
-  { label: "16:8", minutes: 16 * 60 },
-  { label: "18:6", minutes: 18 * 60 },
-  { label: "20:4", minutes: 20 * 60 },
-  { label: "Custom", minutes: 14 * 60 },
+  { label: "12h", minutes: 12 * 60 },
+  { label: "14h", minutes: 14 * 60 },
+  { label: "16h", minutes: 16 * 60 },
+  { label: "18h cautious max", minutes: 18 * 60 },
 ] as const;
 
+export const MIN_PUBLIC_FAST_MINUTES = 12 * 60;
+export const MAX_PUBLIC_FAST_MINUTES = 18 * 60;
 export const MAX_MANUAL_START_BACKDATE_MINUTES = 12 * 60;
 export const MANUAL_START_CONFIRM_MINUTES = 4 * 60;
 
@@ -435,7 +500,10 @@ export function formatCompactDuration(minutes: number) {
 
 export function calculateStats(sessions: FastSession[], profile?: ProfileSummary | null) {
   const completed = sessions.filter(
-    (session) => session.status === "completed" && typeof session.durationMinutes === "number"
+    (session) =>
+      session.status === "completed" &&
+      typeof session.durationMinutes === "number" &&
+      session.durationMinutes > 0
   );
   const totalMinutes = completed.reduce((sum, session) => sum + (session.durationMinutes ?? 0), 0);
   const longestFastMinutes = completed.reduce(

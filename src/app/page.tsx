@@ -16,7 +16,7 @@ export default async function Home() {
   return (
     <AppShell
       currentPath="/"
-      description="Build your streak. Track your window. Stay accountable."
+      description="Today's fasting window"
       providers={authProviders}
       session={session}
       title="Today"

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getErrorMessage, jsonMessage } from "@/lib/api-responses";
 import { getCurrentUserId, getFeedPageData } from "@/lib/fasting-data";
 
 export async function GET() {
@@ -9,7 +10,11 @@ export async function GET() {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const feed = await getFeedPageData(userId);
+  try {
+    const feed = await getFeedPageData(userId);
 
-  return NextResponse.json(feed);
+    return NextResponse.json(feed);
+  } catch (error) {
+    return jsonMessage(getErrorMessage(error, "Unable to load feed."), 500);
+  }
 }

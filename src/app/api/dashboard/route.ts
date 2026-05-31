@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getErrorMessage, jsonMessage } from "@/lib/api-responses";
 import { getCurrentUserId, getDashboardData } from "@/lib/fasting-data";
 
 export async function GET() {
@@ -9,7 +10,11 @@ export async function GET() {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const dashboard = await getDashboardData(userId);
+  try {
+    const dashboard = await getDashboardData(userId);
 
-  return NextResponse.json(dashboard);
+    return NextResponse.json(dashboard);
+  } catch (error) {
+    return jsonMessage(getErrorMessage(error, "Unable to load dashboard."), 500);
+  }
 }

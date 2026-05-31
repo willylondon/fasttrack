@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { LOCAL_DASHBOARD_STORAGE_KEY } from "@/lib/local-dashboard";
 import { cn } from "@/lib/utils";
 
 type SignInDialogProps = {
@@ -42,6 +43,7 @@ export function SignInDialog({
 
   const handleSignIn = (provider: "google" | "github") => {
     setPendingProvider(provider);
+    window.sessionStorage.setItem(`${LOCAL_DASHBOARD_STORAGE_KEY}:sync-after-sign-in`, "true");
     startTransition(async () => {
       await signIn(provider, { callbackUrl: "/" });
       setPendingProvider(null);

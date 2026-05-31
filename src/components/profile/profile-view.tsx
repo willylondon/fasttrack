@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
-import { Bell, BellOff, Eye, EyeOff, Trophy } from "lucide-react";
+import { Bell, BellOff, Image as ImageIcon, RotateCcw, Save, Upload, UserRound, Eye, EyeOff, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 import { SignInDialog } from "@/components/auth/sign-in-dialog";
@@ -12,8 +12,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Progress, ProgressLabel } from "@/components/ui/progress";
-import { ProfilePageData, buildFeedEventCopy } from "@/lib/fasting";
+import { buildFeedEventCopy } from "@/lib/fasting";
+import type { ProfilePageData, ProfileSummary } from "@/lib/fasting";
 import { xpForNextLevel, xpIntoCurrentLevel } from "@/lib/gamification/xp";
 import { cn } from "@/lib/utils";
 
@@ -52,11 +54,31 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+async function readProfilePayload(response: Response) {
+  return response.json().catch(() => null) as Promise<{
+    profile?: ProfileSummary;
+    message?: string;
+  } | null>;
+}
+
+async function readNotificationPayload(response: Response) {
+  return response.json().catch(() => null) as Promise<{
+    saved?: boolean;
+    message?: string;
+  } | null>;
+}
+
 export function ProfileView({ initialData, providers, signedIn }: ProfileViewProps) {
+  const [profile, setProfile] = useState(initialData.profile);
   const [notificationsEnabled, setNotificationsEnabled] = useState(initialData.notificationsEnabled);
   const [isTogglingNotifications, setIsTogglingNotifications] = useState(false);
   const [liveStatusSharingEnabled, setLiveStatusSharingEnabled] = useState(initialData.liveStatusSharingEnabled);
   const [isUpdatingLiveSharing, setIsUpdatingLiveSharing] = useState(false);
+  const [displayNameDraft, setDisplayNameDraft] = useState(initialData.profile?.displayName ?? "");
+  const [avatarUrlDraft, setAvatarUrlDraft] = useState(initialData.profile?.avatarUrl ?? "");
+  const [isSavingIdentity, setIsSavingIdentity] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const liveStatusSharingSupported = initialData.liveStatusSharingSupported;
   const notificationsReady = Boolean(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
   const earnedBadgeIds = useMemo(
@@ -64,38 +86,35 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
     [initialData.earnedBadges]
   );
 
-  if (!signedIn || !initialData.profile) {
+  if (!signedIn || !profile) {
     return (
       <EmptyState
         eyebrow="Profile preview"
-        title="Sign in to save your progress."
-        description="Keep your streak, badge cabinet, account settings, and recent activity tied to one FastTrack profile."
+        title="Sign in to sync your progress."
+        description="Keep your streak, badges, settings, and recent activity tied to one FastTrack profile across devices."
         actions={
           <>
             <SignInDialog
               buttonClassName="w-full sm:w-auto"
-              buttonLabel="Sign in to save your progress"
+              buttonLabel="Sign in to sync your progress"
               providers={providers}
               size="lg"
             />
             <Link href="/" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full sm:w-auto")}>
               Go to dashboard
             </Link>
-            <Link href="/leaderboard" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full sm:w-auto")}>
-              Preview leaderboard
-            </Link>
           </>
         }
         preview={
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-3">
             {[
-              { label: "Streak preview", value: "5 days" },
-              { label: "Badge cabinet", value: "12 badges" },
-              { label: "Level progress", value: "Level 4" },
+              { label: "Current streak", value: "5 days", tone: "text-success" },
+              { label: "Badge cabinet", value: "12 badges", tone: "text-gold" },
+              { label: "Level progress", value: "Level 4", tone: "text-primary" },
             ].map((item) => (
-              <div key={item.label} className="glass-soft rounded-[1.5rem] px-4 py-5">
-                <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">{item.label}</p>
-                <p className="mt-3 font-[family:var(--font-heading)] text-3xl font-semibold text-foreground">
+              <div key={item.label} className="premium-chip rounded-[1.25rem] p-4">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{item.label}</p>
+                <p className={cn("mt-3 font-[family:var(--font-heading)] text-2xl font-semibold", item.tone)}>
                   {item.value}
                 </p>
               </div>
@@ -106,9 +125,15 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
     );
   }
 
-  const currentLevelXp = xpIntoCurrentLevel(initialData.profile.xp);
-  const nextLevelXp = xpForNextLevel(initialData.profile.level);
+  const currentProfile = profile;
+  const currentLevelXp = xpIntoCurrentLevel(currentProfile.xp);
+  const nextLevelXp = xpForNextLevel(currentProfile.level);
   const progress = Math.min(100, Math.round((currentLevelXp / nextLevelXp) * 100));
+  const normalizedDisplayName = displayNameDraft.trim();
+  const normalizedAvatarUrl = avatarUrlDraft.trim();
+  const identityChanged =
+    normalizedDisplayName !== (currentProfile.displayName ?? "") ||
+    normalizedAvatarUrl !== (currentProfile.avatarUrl ?? "");
 
   async function toggleNotifications() {
     setIsTogglingNotifications(true);
@@ -119,6 +144,35 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
       }
 
       const registration = await navigator.serviceWorker.register("/sw.js");
+
+      if (notificationsEnabled) {
+        const subscription = await registration.pushManager?.getSubscription();
+        await subscription?.unsubscribe();
+
+        const response = await fetch("/api/notifications/subscribe", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            enabled: false,
+          }),
+        });
+        const payload = await readNotificationPayload(response);
+
+        if (!response.ok || payload?.saved === false) {
+          throw new Error(payload?.message ?? "Unable to turn notifications off.");
+        }
+
+        setNotificationsEnabled(false);
+        toast.success("Notifications off.");
+        return;
+      }
+
+      if (!("Notification" in window)) {
+        throw new Error("Notifications are not supported in this browser.");
+      }
+
       const permission = await Notification.requestPermission();
 
       if (permission !== "granted") {
@@ -139,7 +193,7 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
         }
       }
 
-      await fetch("/api/notifications/subscribe", {
+      const response = await fetch("/api/notifications/subscribe", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -149,16 +203,19 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
           subscription: subscriptionPayload,
         }),
       });
+      const payload = await readNotificationPayload(response);
 
-      if (!notificationsEnabled) {
-        await registration.showNotification("FastTrack notifications enabled", {
-          body: "You’ll see alerts here when streaks, badges, and milestones fire.",
-          icon: "/favicon.ico",
-        });
+      if (!response.ok || payload?.saved === false) {
+        throw new Error(payload?.message ?? "Unable to save notification settings.");
       }
 
-      setNotificationsEnabled((current) => !current);
-      toast.success(!notificationsEnabled ? "Notifications enabled." : "Notifications updated.");
+      await registration.showNotification("FastTrack notifications enabled", {
+        body: "You’ll see alerts here when streaks, badges, and milestones fire.",
+        icon: "/favicon.ico",
+      });
+
+      setNotificationsEnabled(true);
+      toast.success("Notifications enabled.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to update notifications.");
     } finally {
@@ -180,17 +237,101 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
         }),
       });
 
-      if (!response.ok) {
-        throw new Error("Unable to update live status sharing.");
+      const payload = await readProfilePayload(response);
+
+      if (!response.ok || !payload?.profile) {
+        throw new Error(payload?.message ?? "Unable to update live status sharing.");
       }
 
       setLiveStatusSharingEnabled((current) => !current);
+      setProfile(payload.profile);
       toast.success(!liveStatusSharingEnabled ? "Live fasting sharing enabled." : "Live fasting sharing hidden.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to update live sharing.");
     } finally {
       setIsUpdatingLiveSharing(false);
     }
+  }
+
+  async function saveIdentity() {
+    if (!normalizedDisplayName || normalizedDisplayName.length < 2) {
+      toast.error("Use at least 2 characters for your display name.");
+      return;
+    }
+
+    setIsSavingIdentity(true);
+
+    try {
+      const response = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          displayName: normalizedDisplayName,
+        }),
+      });
+
+      const payload = await readProfilePayload(response);
+
+      if (!response.ok || !payload?.profile) {
+        throw new Error(payload?.message ?? "Unable to update your profile.");
+      }
+
+      setProfile(payload.profile);
+      setDisplayNameDraft(payload.profile.displayName ?? "");
+      setAvatarUrlDraft(payload.profile.avatarUrl ?? "");
+      toast.success("Profile updated.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to update your profile.");
+    } finally {
+      setIsSavingIdentity(false);
+    }
+  }
+
+  async function uploadAvatar(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Choose an image file for your avatar.");
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("avatar", file);
+
+      const response = await fetch("/api/profile/avatar", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = await readProfilePayload(response);
+
+      if (!response.ok || !payload?.profile) {
+        throw new Error(payload?.message ?? "Unable to upload avatar.");
+      }
+
+      setProfile(payload.profile);
+      setAvatarUrlDraft(payload.profile.avatarUrl ?? "");
+      toast.success("Avatar uploaded.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to upload avatar.");
+    } finally {
+      setIsUploadingAvatar(false);
+
+      if (avatarInputRef.current) {
+        avatarInputRef.current.value = "";
+      }
+    }
+  }
+
+  function resetIdentityDrafts() {
+    setDisplayNameDraft(currentProfile.displayName ?? "");
+    setAvatarUrlDraft(currentProfile.avatarUrl ?? "");
   }
 
   return (
@@ -200,12 +341,12 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4">
               <Avatar size="lg">
-                <AvatarImage src={initialData.profile.avatarUrl ?? undefined} alt={initialData.profile.displayName ?? "Profile"} />
-                <AvatarFallback>{getInitials(initialData.profile.displayName)}</AvatarFallback>
+                <AvatarImage src={normalizedAvatarUrl || undefined} alt={normalizedDisplayName || "Profile"} />
+                <AvatarFallback>{getInitials(normalizedDisplayName || currentProfile.displayName)}</AvatarFallback>
               </Avatar>
               <div>
-                <CardTitle>{initialData.profile.displayName ?? "FastTrack user"}</CardTitle>
-                <CardDescription>Level {initialData.profile.level} • {initialData.profile.xp} XP earned</CardDescription>
+                <CardTitle>{normalizedDisplayName || currentProfile.displayName || "FastTrack user"}</CardTitle>
+                <CardDescription>Level {currentProfile.level} • {currentProfile.xp} XP earned</CardDescription>
               </div>
             </div>
             <Button
@@ -243,12 +384,87 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
+          <div className="glass-soft rounded-[1.5rem] p-4">
+            <div className="grid gap-4 lg:grid-cols-[1fr_1.3fr] lg:items-start">
+              <div>
+                <p className="text-sm font-medium text-foreground">Profile identity</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Choose the name and avatar friends see on live fasting boards, challenges, and leaderboards.
+                </p>
+              </div>
+              <div className="grid gap-3">
+                <label className="space-y-2">
+                  <span className="flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                    <UserRound className="size-3.5" />
+                    Display name
+                  </span>
+                  <Input
+                    maxLength={40}
+                    onChange={(event) => setDisplayNameDraft(event.target.value)}
+                    placeholder="Your FastTrack name"
+                    value={displayNameDraft}
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                    <ImageIcon className="size-3.5" />
+                    Avatar image
+                  </span>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      inputMode="url"
+                      placeholder="Upload an avatar"
+                      readOnly
+                      value={avatarUrlDraft}
+                    />
+                    <input
+                      ref={avatarInputRef}
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      onChange={(event) => void uploadAvatar(event.target.files?.[0])}
+                      type="file"
+                    />
+                    <Button
+                      className="rounded-2xl sm:w-auto"
+                      disabled={isUploadingAvatar || isSavingIdentity}
+                      onClick={() => avatarInputRef.current?.click()}
+                      type="button"
+                      variant="outline"
+                    >
+                      <Upload className="mr-2 size-4" />
+                      {isUploadingAvatar ? "Uploading" : "Upload"}
+                    </Button>
+                  </div>
+                </label>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    className="rounded-2xl"
+                    disabled={!identityChanged || isSavingIdentity}
+                    onClick={() => void saveIdentity()}
+                  >
+                    <Save className="mr-2 size-4" />
+                    Save profile
+                  </Button>
+                  <Button
+                    className="rounded-2xl"
+                    disabled={!identityChanged || isSavingIdentity}
+                    onClick={resetIdentityDrafts}
+                    variant="outline"
+                  >
+                    <RotateCcw className="mr-2 size-4" />
+                    Reset
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {!notificationsReady ? (
-            <div className="glass-soft rounded-[1.5rem] px-4 py-4 text-sm text-muted-foreground">
+            <div className="premium-rail rounded-[1.25rem] px-4 py-4 text-sm text-muted-foreground">
               Push notifications are not configured for this environment yet. Your saved progress and account data still work normally.
             </div>
           ) : null}
-          <div className="glass-soft rounded-[1.5rem] px-4 py-4 text-sm text-muted-foreground">
+          <div className="premium-rail rounded-[1.25rem] px-4 py-4 text-sm text-muted-foreground">
             <p className="font-medium text-foreground">Live fasting visibility</p>
             <p className="mt-2 leading-6">
               {!liveStatusSharingSupported
@@ -273,10 +489,10 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {[
-                  { label: "Total fasts", value: initialData.profile.totalFasts.toString() },
-                  { label: "Total hours", value: initialData.profile.totalFastHours.toString() },
-                  { label: "Highest checkpoint", value: `${initialData.profile.highestStageReached}h` },
-                  { label: "Friends", value: initialData.profile.friendCount.toString() },
+                  { label: "Total fasts", value: currentProfile.totalFasts.toString() },
+                  { label: "Total hours", value: currentProfile.totalFastHours.toString() },
+                  { label: "Highest checkpoint", value: `${currentProfile.highestStageReached}h` },
+                  { label: "Friends", value: currentProfile.friendCount.toString() },
                 ].map((item) => (
               <div key={item.label} className="glass-soft rounded-[1.5rem] px-4 py-4">
                 <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">{item.label}</p>
@@ -335,8 +551,8 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
                 className="glass-soft flex gap-3 rounded-[1.5rem] px-4 py-4"
               >
                 <Avatar size="sm">
-                  <AvatarImage src={initialData.profile?.avatarUrl ?? undefined} alt={initialData.profile?.displayName ?? "Profile"} />
-                  <AvatarFallback>{getInitials(initialData.profile?.displayName)}</AvatarFallback>
+                  <AvatarImage src={currentProfile.avatarUrl ?? undefined} alt={currentProfile.displayName ?? "Profile"} />
+                  <AvatarFallback>{getInitials(currentProfile.displayName)}</AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 space-y-1">
                   <p className="text-sm leading-6 text-foreground">{buildFeedEventCopy(event)}</p>

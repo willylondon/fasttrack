@@ -4,27 +4,11 @@ import "server-only";
 
 import { auth } from "@/auth";
 import {
-  BadgeDefinition,
-  DashboardData,
   EMPTY_DASHBOARD_DATA,
   EMPTY_HISTORY_DATA,
   FASTING_STAGES,
-  FastCompletionGamification,
-  FeedPageData,
-  FastSession,
-  FastStatus,
-  FriendListItem,
-  FriendLiveSession,
-  FriendSearchResult,
-  FriendRequest,
-  FriendsPageData,
-  HistoryData,
-  LeaderboardData,
-  LeaderboardEntry,
-  OutgoingFriendRequest,
-  ProfilePageData,
-  ProfileSummary,
-  SocialProfile,
+  MAX_PUBLIC_FAST_MINUTES,
+  MIN_PUBLIC_FAST_MINUTES,
   buildFeedEventCopy,
   calculateCurrentStreak,
   calculateLongestStreak,
@@ -36,12 +20,43 @@ import {
   mapProfile,
   validateManualStartTimestamp,
 } from "@/lib/fasting";
-import { checkBadges, ensureBadgeCatalogSeeded } from "@/lib/gamification/badges";
-import { calculateLevel, xpForFasting } from "@/lib/gamification/xp";
+import type {
+  BadgeDefinition,
+  Challenge,
+  ChallengeDetail,
+  ChallengeParticipant,
+  ChallengesListData,
+  ChallengeType,
+  DashboardData,
+  FastCompletionGamification,
+  FastSession,
+  FastStatus,
+  FeedPageData,
+  FriendListItem,
+  FriendLiveSession,
+  FriendRequest,
+  FriendSearchResult,
+  FriendsPageData,
+  HistoryData,
+  LeaderboardData,
+  LeaderboardEntry,
+  OutgoingFriendRequest,
+  ProfilePageData,
+  ProfileSummary,
+  SocialProfile,
+} from "@/lib/fasting";
+import {
+  categorizeChallenges,
+  computeChallengeProgressFromSessions,
+  sortChallengeParticipants,
+} from "@/lib/challenges";
+import { checkBadges } from "@/lib/gamification/badges";
+import { xpForFasting } from "@/lib/gamification/xp";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { endOfMonth, endOfWeek, startOfMonth, startOfWeek } from "date-fns";
 
-const PROFILE_COLUMNS = "*";
+const PROFILE_COLUMNS =
+  "id,display_name,avatar_url,total_fasts,total_fast_hours,current_streak,longest_streak,xp,level,highest_stage_reached,friend_count,share_live_status,created_at";
 const FAST_SESSION_COLUMNS =
   "id,user_id,started_at,ended_at,duration_minutes,duration_planned_minutes,status,notes,created_at,stage_reached";
 const FEED_COLUMNS = "id,user_id,event_type,metadata,created_at";
@@ -58,36 +73,24 @@ export async function getDashboardData(userId: string | null | undefined): Promi
   }
 
   const supabase = createAdminClient();
-  const [profileResult, activeSessionResult, sessionsResult, acceptedFriendshipsResult, pendingFriendshipsResult] =
-    await Promise.all([
-      supabase.from("profiles").select(PROFILE_COLUMNS).eq("id", userId).maybeSingle(),
-      supabase
-        .from("fast_sessions")
-        .select(FAST_SESSION_COLUMNS)
-        .eq("user_id", userId)
-        .eq("status", "active")
-        .order("started_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from("fast_sessions")
-        .select(FAST_SESSION_COLUMNS)
-        .eq("user_id", userId)
-        .neq("status", "active")
-        .order("started_at", { ascending: false })
-        .limit(30),
-      supabase
-        .from("friendships")
-        .select("id,sender_id,receiver_id,status,created_at")
-        .eq("status", "accepted")
-        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`),
-      supabase
-        .from("friendships")
-        .select("id,sender_id,receiver_id,status,created_at")
-        .eq("receiver_id", userId)
-        .eq("status", "pending")
-        .order("created_at", { ascending: false }),
-    ]);
+  const [profileResult, activeSessionResult, sessionsResult] = await Promise.all([
+    supabase.from("profiles").select(PROFILE_COLUMNS).eq("id", userId).maybeSingle(),
+    supabase
+      .from("fast_sessions")
+      .select(FAST_SESSION_COLUMNS)
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("fast_sessions")
+      .select(FAST_SESSION_COLUMNS)
+      .eq("user_id", userId)
+      .neq("status", "active")
+      .order("started_at", { ascending: false })
+      .limit(12),
+  ]);
 
   if (profileResult.error) {
     throw profileResult.error;
@@ -101,63 +104,18 @@ export async function getDashboardData(userId: string | null | undefined): Promi
     throw sessionsResult.error;
   }
 
-  if (acceptedFriendshipsResult.error) {
-    throw acceptedFriendshipsResult.error;
-  }
-
-  if (pendingFriendshipsResult.error) {
-    throw pendingFriendshipsResult.error;
-  }
-
   const activeSession = activeSessionResult.data ? mapFastSession(activeSessionResult.data) : null;
   const sessions = (sessionsResult.data ?? []).map(mapFastSession);
-  const acceptedFriendIds = (acceptedFriendshipsResult.data ?? []).map((friendship) =>
-    friendship.sender_id === userId ? friendship.receiver_id : friendship.sender_id
-  );
-  const pendingSenderIds = (pendingFriendshipsResult.data ?? []).map((friendship) => friendship.sender_id);
-  const lookupIds = Array.from(new Set([...acceptedFriendIds, ...pendingSenderIds]));
-
-  const [profileLookup, pendingEmailLookup, milestoneStageReached, feed] = await Promise.all([
-    getProfilesById(lookupIds),
-    getEmailsById(pendingSenderIds),
-    getHighestMilestoneStage(userId, activeSession),
-    getFriendFeed(acceptedFriendIds),
-  ]);
   const profile = profileResult.data ? mapProfile(profileResult.data) : null;
-  const computedFields = await getComputedProfileFields(userId);
-
-  const pendingRequests = (pendingFriendshipsResult.data ?? [])
-    .map((friendship): FriendRequest | null => {
-      const sender = profileLookup.get(friendship.sender_id);
-
-      if (!sender) {
-        return null;
-      }
-
-      return {
-        id: friendship.id,
-        createdAt: friendship.created_at,
-        sender: {
-          ...sender,
-          email: pendingEmailLookup.get(friendship.sender_id) ?? null,
-        },
-      };
-    })
-    .filter((request): request is FriendRequest => Boolean(request));
+  const milestoneStageReached = await getHighestMilestoneStage(userId, activeSession);
 
   return {
-    profile: profile
-      ? {
-          ...profile,
-          highestStageReached: computedFields.highestStageReached,
-          friendCount: acceptedFriendIds.length,
-        }
-      : null,
+    profile,
     activeSession,
     sessions,
-    feed,
-    pendingRequests,
-    acceptedFriendsCount: acceptedFriendIds.length,
+    feed: [],
+    pendingRequests: [],
+    acceptedFriendsCount: profile?.friendCount ?? 0,
     milestoneStageReached,
   };
 }
@@ -174,7 +132,8 @@ export async function getHistoryData(userId: string | null | undefined): Promise
       .from("fast_sessions")
       .select(FAST_SESSION_COLUMNS)
       .eq("user_id", userId)
-      .neq("status", "active")
+      .eq("status", "completed")
+      .gt("duration_minutes", 0)
       .order("created_at", { ascending: false })
       .limit(120),
   ]);
@@ -209,7 +168,7 @@ export async function getLeaderboardData(userId: string | null | undefined): Pro
 
   const rankingIds = [userId, ...(await getAcceptedFriendIds(userId))];
   const supabase = createAdminClient();
-  const [profilesResult, sessionsResult] = await Promise.all([
+  const [profilesResult, sessionsResult, activeSessionsResult] = await Promise.all([
     supabase.from("profiles").select(PROFILE_COLUMNS).in("id", rankingIds),
     supabase
       .from("fast_sessions")
@@ -217,6 +176,12 @@ export async function getLeaderboardData(userId: string | null | undefined): Pro
       .eq("status", "completed")
       .in("user_id", rankingIds)
       .not("ended_at", "is", null),
+    supabase
+      .from("fast_sessions")
+      .select("user_id,started_at,status")
+      .eq("status", "active")
+      .in("user_id", rankingIds)
+      .order("started_at", { ascending: false }),
   ]);
 
   if (profilesResult.error) {
@@ -227,17 +192,22 @@ export async function getLeaderboardData(userId: string | null | undefined): Pro
     throw sessionsResult.error;
   }
 
+  if (activeSessionsResult.error) {
+    throw activeSessionsResult.error;
+  }
+
   const profiles = (profilesResult.data ?? []).map(mapProfile);
   const currentDate = new Date();
+  const activeStageMap = buildActiveStageMap(activeSessionsResult.data ?? [], currentDate);
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
 
   return {
-    weekly: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], weekStart, weekEnd, userId),
-    monthly: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], monthStart, monthEnd, userId),
-    allTime: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], null, null, userId),
+    weekly: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], activeStageMap, weekStart, weekEnd, userId),
+    monthly: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], activeStageMap, monthStart, monthEnd, userId),
+    allTime: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], activeStageMap, null, null, userId),
   };
 }
 
@@ -255,7 +225,6 @@ export async function getProfilePageData(userId: string | null | undefined): Pro
   }
 
   const supabase = createAdminClient();
-  await ensureBadgeCatalogSeeded(supabase);
 
   const [profileResult, badgeResult, userBadgeResult, activityResult] = await Promise.all([
     supabase.from("profiles").select(PROFILE_COLUMNS).eq("id", userId).single(),
@@ -394,10 +363,10 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
     item.sender_id === userId ? item.receiver_id : item.sender_id
   );
   const lookupIds = Array.from(new Set([...incomingIds, ...outgoingIds, ...friendIds]));
-  const [profilesById, emailLookup, liveSessions] = await Promise.all([
-    getProfilesById(lookupIds, true),
+  const profilesById = await getProfilesById(lookupIds, true);
+  const [emailLookup, liveSessions] = await Promise.all([
     getEmailsById([...incomingIds, ...outgoingIds]),
-    getActiveFriendSessions(friendIds),
+    getActiveFriendSessions([...friendIds, userId], userId, profilesById),
   ]);
   const liveSessionLookup = new Map(liveSessions.map((session) => [session.userId, session]));
 
@@ -484,7 +453,55 @@ export async function updateLiveStatusSharing(userId: string, shareLiveStatus: b
   return mapProfile(result.data);
 }
 
+export async function updateProfileSettings(
+  userId: string,
+  input: {
+    displayName?: string;
+    avatarUrl?: string | null;
+    shareLiveStatus?: boolean;
+  }
+) {
+  const updates: {
+    display_name?: string;
+    avatar_url?: string | null;
+    share_live_status?: boolean;
+  } = {};
+
+  if (typeof input.displayName === "string") {
+    updates.display_name = input.displayName.trim();
+  }
+
+  if ("avatarUrl" in input) {
+    updates.avatar_url = input.avatarUrl?.trim() || null;
+  }
+
+  if (typeof input.shareLiveStatus === "boolean") {
+    updates.share_live_status = input.shareLiveStatus;
+  }
+
+  if (!Object.keys(updates).length) {
+    return getProfileById(userId);
+  }
+
+  const result = await createAdminClient()
+    .from("profiles")
+    .update(updates)
+    .eq("id", userId)
+    .select(PROFILE_COLUMNS)
+    .single();
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  return mapProfile(result.data);
+}
+
 export async function startFast(userId: string, plannedMinutes: number, startedAt?: string | null) {
+  if (plannedMinutes < MIN_PUBLIC_FAST_MINUTES || plannedMinutes > MAX_PUBLIC_FAST_MINUTES) {
+    throw new Error("FastTrack supports planned windows from 12 to 18 hours for this beta.");
+  }
+
   const supabase = createAdminClient();
   const existingActive = await supabase
     .from("fast_sessions")
@@ -613,11 +630,20 @@ export async function updateFast(
     0,
     Math.round((Date.parse(endedAt) - Date.parse(sessionResult.data.started_at)) / 60000)
   );
+
+  if (action === "complete" && durationMinutes < 1) {
+    throw new Error("Fast must run for at least 1 minute before it can be completed. Cancel it instead if this was a mistake.");
+  }
+
   const finalStageReached = Math.max(
     sessionResult.data.stage_reached ?? 0,
     getStageIndexForMinutes(durationMinutes)
   );
   const nextStatus: FastStatus = action === "complete" ? "completed" : "cancelled";
+
+  // Capture previous profile state before fast_sessions_sync_profile_fast_stats trigger executes
+  const previousProfile = action === "complete" ? await getProfileById(userId) : null;
+
   const updateResult = await supabase
     .from("fast_sessions")
     .update({
@@ -639,73 +665,71 @@ export async function updateFast(
   let gamification: FastCompletionGamification | undefined;
 
   if (action === "complete") {
-    const previousProfile = await getProfileById(userId);
-    const refreshedProfile = await refreshProfileStats(userId);
+    try {
+      // Re-fetch the profile. The database trigger fast_sessions_sync_profile_fast_stats has completed running,
+      // so refreshedProfile will contain the updated total_fasts, streaks, etc.
+      const refreshedProfile = await getProfileById(userId);
 
-    await insertFeedEvent(userId, "fast_completed", {
-      durationMinutes,
-      plannedMinutes: sessionResult.data.duration_planned_minutes,
-      sessionId,
-    });
-
-    if (
-      refreshedProfile &&
-      previousProfile &&
-      refreshedProfile.currentStreak > previousProfile.currentStreak
-    ) {
-      await insertFeedEvent(userId, "streak_updated", {
-        currentStreak: refreshedProfile.currentStreak,
-      });
-    }
-
-    if (refreshedProfile && previousProfile) {
-      const baseXp = xpForFasting(durationMinutes, finalStageReached, refreshedProfile.currentStreak);
-      const xpTransactionResult = await supabase.from("xp_transactions").insert({
-        user_id: userId,
-        amount: baseXp,
-        source: "fast_completed",
-        reference_id: sessionId,
+      await insertFeedEvent(userId, "fast_completed", {
+        durationMinutes,
+        plannedMinutes: sessionResult.data.duration_planned_minutes,
+        sessionId,
       });
 
-      if (xpTransactionResult.error) {
-        throw xpTransactionResult.error;
-      }
-
-      const badgeAwards = await checkBadges(userId, supabase);
-      const totalXpGain = baseXp + badgeAwards.bonusXp;
-      const nextXp = previousProfile.xp + totalXpGain;
-      const nextLevel = calculateLevel(nextXp);
-      const levelChanged = nextLevel > previousProfile.level;
-
-      const profileXpUpdate = await supabase
-        .from("profiles")
-        .update({
-          xp: nextXp,
-          level: nextLevel,
-        })
-        .eq("id", userId)
-        .select(PROFILE_COLUMNS)
-        .single();
-
-      if (profileXpUpdate.error) {
-        throw profileXpUpdate.error;
-      }
-
-      if (levelChanged) {
-        await insertFeedEvent(userId, "level_up", {
-          level: nextLevel,
-          previousLevel: previousProfile.level,
+      if (
+        refreshedProfile &&
+        previousProfile &&
+        refreshedProfile.currentStreak > previousProfile.currentStreak
+      ) {
+        await insertFeedEvent(userId, "streak_updated", {
+          currentStreak: refreshedProfile.currentStreak,
         });
       }
 
-      gamification = {
-        xpGained: totalXpGain,
-        newlyEarnedBadges: badgeAwards.badges,
-        leveledUp: levelChanged,
-        previousLevel: previousProfile.level,
-        newLevel: nextLevel,
-        newXp: nextXp,
-      };
+      if (refreshedProfile && previousProfile) {
+        const baseXp = xpForFasting(durationMinutes, finalStageReached, refreshedProfile.currentStreak);
+        const xpTransactionResult = await supabase.from("xp_transactions").insert({
+          user_id: userId,
+          amount: baseXp,
+          source: "fast_completed",
+          reference_id: sessionId,
+        });
+
+        if (xpTransactionResult.error) {
+          throw xpTransactionResult.error;
+        }
+
+        // checkBadges automatically writes badge earned XP transactions
+        const badgeAwards = await checkBadges(userId, supabase);
+
+        // Fetch final profile after all XP transactions are processed by database triggers
+        const finalProfile = await getProfileById(userId);
+
+        if (!finalProfile) {
+          throw new Error("Failed to fetch final profile");
+        }
+
+        const totalXpGain = baseXp + badgeAwards.bonusXp;
+        const levelChanged = finalProfile.level > previousProfile.level;
+
+        if (levelChanged) {
+          await insertFeedEvent(userId, "level_up", {
+            level: finalProfile.level,
+            previousLevel: previousProfile.level,
+          });
+        }
+
+        gamification = {
+          xpGained: totalXpGain,
+          newlyEarnedBadges: badgeAwards.badges,
+          leveledUp: levelChanged,
+          previousLevel: previousProfile.level,
+          newLevel: finalProfile.level,
+          newXp: finalProfile.xp,
+        };
+      }
+    } catch (error) {
+      console.error("Fast completion side effects failed", error);
     }
   }
 
@@ -1003,26 +1027,30 @@ async function getFriendFeed(friendIds: string[], limit = 20) {
   return (feedResult.data ?? []).map((event) => mapFeedEvent(event, profileLookup.get(event.user_id) ?? null));
 }
 
-async function getActiveFriendSessions(friendIds: string[]) {
-  if (!friendIds.length) {
+async function getActiveFriendSessions(
+  userIds: string[],
+  currentUserId?: string,
+  profileLookup?: Map<string, SocialProfile & { currentStreak?: number; longestStreak?: number; shareLiveStatus?: boolean }>
+) {
+  const ids = Array.from(new Set(userIds.filter(Boolean)));
+
+  if (!ids.length) {
     return [] satisfies FriendLiveSession[];
   }
 
   const supabase = createAdminClient();
-  const [sessionResult, profileLookup] = await Promise.all([
-    supabase
-      .from("fast_sessions")
-      .select("user_id,started_at,duration_planned_minutes,status")
-      .in("user_id", friendIds)
-      .eq("status", "active")
-      .order("started_at", { ascending: false }),
-    getProfilesById(friendIds),
-  ]);
+  const sessionResult = await supabase
+    .from("fast_sessions")
+    .select("user_id,started_at,duration_planned_minutes,status")
+    .in("user_id", ids)
+    .eq("status", "active")
+    .order("started_at", { ascending: false });
 
   if (sessionResult.error) {
     throw sessionResult.error;
   }
 
+  const resolvedProfiles = profileLookup ?? await getProfilesById(ids);
   const latestByUser = new Map<string, FriendLiveSession>();
 
   for (const session of sessionResult.data ?? []) {
@@ -1030,18 +1058,21 @@ async function getActiveFriendSessions(friendIds: string[]) {
       continue;
     }
 
-    const profile = profileLookup.get(session.user_id);
+    const profile = resolvedProfiles.get(session.user_id);
 
-    if (profile?.shareLiveStatus === false) {
+    const isCurrentUser = currentUserId === session.user_id;
+
+    if (!isCurrentUser && profile?.shareLiveStatus === false) {
       continue;
     }
 
     latestByUser.set(session.user_id, {
       userId: session.user_id,
-      displayName: profile?.displayName ?? "FastTrack friend",
+      displayName: profile?.displayName ?? (isCurrentUser ? "You" : "FastTrack friend"),
       avatarUrl: profile?.avatarUrl ?? null,
       startedAt: session.started_at,
       plannedMinutes: session.duration_planned_minutes,
+      isCurrentUser,
     });
   }
 
@@ -1068,11 +1099,11 @@ async function getProfilesById(userIds: string[], includeStreaks = false) {
   const profileResult = includeStreaks
     ? await createAdminClient()
         .from("profiles")
-        .select("*")
+        .select("id,display_name,avatar_url,share_live_status,current_streak,longest_streak")
         .in("id", ids)
     : await createAdminClient()
         .from("profiles")
-        .select("*")
+        .select("id,display_name,avatar_url,share_live_status")
         .in("id", ids);
 
   if (profileResult.error) {
@@ -1143,7 +1174,7 @@ async function getEmailsById(userIds: string[]) {
   return emailLookup;
 }
 
-async function getProfileById(userId: string) {
+export async function getProfileById(userId: string) {
   const profileResult = await createAdminClient()
     .from("profiles")
     .select(PROFILE_COLUMNS)
@@ -1157,54 +1188,6 @@ async function getProfileById(userId: string) {
   return profileResult.data ? mapProfile(profileResult.data) : null;
 }
 
-async function refreshProfileStats(userId: string) {
-  const supabase = createAdminClient();
-  const sessionResult = await supabase
-    .from("fast_sessions")
-    .select("duration_minutes,ended_at,stage_reached")
-    .eq("user_id", userId)
-    .eq("status", "completed");
-
-  if (sessionResult.error) {
-    throw sessionResult.error;
-  }
-
-  const completedSessions: FastSession[] = (sessionResult.data ?? []).map((session, index) => ({
-    id: `${userId}-${index}`,
-    userId,
-    startedAt: session.ended_at ?? new Date().toISOString(),
-    endedAt: session.ended_at,
-    durationMinutes: session.duration_minutes,
-    plannedMinutes: 0,
-    status: "completed",
-    notes: null,
-    createdAt: session.ended_at ?? new Date().toISOString(),
-    stageReached: session.stage_reached ?? 0,
-  }));
-  const totalMinutes = completedSessions.reduce((sum, session) => sum + (session.durationMinutes ?? 0), 0);
-  const totalFastHours = Number((totalMinutes / 60).toFixed(2));
-  const totalFasts = completedSessions.length;
-  const currentStreak = calculateCurrentStreak(completedSessions);
-  const longestStreak = calculateLongestStreak(completedSessions);
-
-  const updateResult = await supabase
-    .from("profiles")
-    .update({
-      total_fasts: totalFasts,
-      total_fast_hours: totalFastHours,
-      current_streak: currentStreak,
-      longest_streak: longestStreak,
-    })
-    .eq("id", userId)
-    .select(PROFILE_COLUMNS)
-    .single();
-
-  if (updateResult.error) {
-    throw updateResult.error;
-  }
-
-  return mapProfile(updateResult.data);
-}
 
 async function insertFeedEvent(
   userId: string,
@@ -1279,6 +1262,7 @@ function buildLeaderboardEntries(
     ended_at: string | null;
     status: string;
   }>,
+  activeStageMap: Map<string, LeaderboardEntry["currentStage"]>,
   startDate: Date | null,
   endDate: Date | null,
   currentUserId: string | null | undefined
@@ -1322,9 +1306,10 @@ function buildLeaderboardEntries(
       currentStreak: profile.currentStreak,
       stat: statMap.get(profile.id) ?? 0,
       supportingStat: `${completionMap.get(profile.id) ?? 0} completed`,
+      currentStage: activeStageMap.get(profile.id) ?? null,
       isCurrentUser: currentUserId === profile.id,
     }))
-    .filter((entry) => entry.stat > 0)
+    .filter((entry) => entry.stat > 0 || entry.currentStage)
     .sort(
       (left, right) =>
         right.stat - left.stat ||
@@ -1335,4 +1320,306 @@ function buildLeaderboardEntries(
       rank: index + 1,
       ...entry,
     }) satisfies LeaderboardEntry);
+}
+
+function buildActiveStageMap(
+  sessions: Array<{
+    user_id: string;
+    started_at: string;
+    status: string;
+  }>,
+  currentDate: Date
+) {
+  const activeStageMap = new Map<string, LeaderboardEntry["currentStage"]>();
+
+  for (const session of sessions) {
+    if (activeStageMap.has(session.user_id)) {
+      continue;
+    }
+
+    const elapsedMinutes = Math.max(0, Math.floor((currentDate.getTime() - Date.parse(session.started_at)) / 60000));
+    const stage = getStageForMinutes(elapsedMinutes);
+    activeStageMap.set(session.user_id, {
+      label: stage.label,
+      color: stage.color,
+      elapsedMinutes,
+    });
+  }
+
+  return activeStageMap;
+}
+
+type DatabaseChallenge = {
+  id: string;
+  creator_id: string;
+  title: string;
+  description: string | null;
+  challenge_type: ChallengeType;
+  target_value: number;
+  duration_days: number;
+  starts_at: string;
+  ends_at: string;
+  is_public: boolean;
+  created_at: string;
+};
+
+type DatabaseChallengeParticipant = {
+  challenge_id: string;
+  user_id: string;
+  progress: number;
+  completed: boolean;
+  completed_at: string | null;
+  joined_at: string;
+};
+
+function mapChallenge(record: DatabaseChallenge, participantCount: number, creator: { displayName: string | null; avatarUrl: string | null }): Challenge {
+  return {
+    id: record.id,
+    title: record.title,
+    description: record.description,
+    challengeType: record.challenge_type,
+    targetValue: record.target_value,
+    durationDays: record.duration_days,
+    startsAt: record.starts_at,
+    endsAt: record.ends_at,
+    isPublic: record.is_public,
+    creatorId: record.creator_id,
+    createdAt: record.created_at,
+    participantCount,
+    creator,
+  };
+}
+
+async function computeChallengeProgress(userId: string, challenge: DatabaseChallenge): Promise<number> {
+  const supabase = createAdminClient();
+
+  const { data: sessions, error } = await supabase
+    .from("fast_sessions")
+    .select("ended_at,duration_minutes,status,stage_reached")
+    .eq("user_id", userId)
+    .eq("status", "completed")
+    .not("ended_at", "is", null)
+    .gte("ended_at", challenge.starts_at)
+    .lte("ended_at", challenge.ends_at)
+    .order("ended_at", { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return computeChallengeProgressFromSessions(
+    mapChallenge(challenge, 0, { displayName: null, avatarUrl: null }),
+    (sessions ?? []).map((session) => ({
+      endedAt: session.ended_at,
+      durationMinutes: session.duration_minutes,
+      status: session.status as FastStatus,
+      stageReached: session.stage_reached ?? 0,
+    }))
+  );
+}
+
+export async function getChallengesListData(userId: string | null | undefined): Promise<ChallengesListData> {
+  const supabase = createAdminClient();
+  const now = new Date().toISOString();
+
+  const participantResult = userId
+    ? await supabase
+        .from("challenge_participants")
+        .select("challenge_id")
+        .eq("user_id", userId)
+    : null;
+
+  if (participantResult?.error) throw participantResult.error;
+
+  const participantIds = participantResult?.data?.map((p: { challenge_id: string }) => p.challenge_id) ?? [];
+
+  const [challengesResult, countResult] = await Promise.all([
+    supabase
+      .from("challenges")
+      .select("*")
+      .or(userId ? `is_public.eq.true,creator_id.eq.${userId}` : "is_public.eq.true")
+      .order("starts_at", { ascending: false }),
+    supabase
+      .from("challenge_participants")
+      .select("challenge_id,user_id"),
+  ]);
+
+  if (challengesResult.error) throw challengesResult.error;
+  if (countResult.error) throw countResult.error;
+
+  const participantCounts = new Map<string, number>();
+  for (const row of countResult.data ?? []) {
+    participantCounts.set(row.challenge_id, (participantCounts.get(row.challenge_id) ?? 0) + 1);
+  }
+
+  const creatorIds = [...new Set(challengesResult.data.map((c: DatabaseChallenge) => c.creator_id))];
+  const profiles = creatorIds.length
+    ? await supabase.from("profiles").select("id,display_name,avatar_url").in("id", creatorIds).then((r) => r.data ?? [])
+    : [];
+
+  const profileMap = new Map(profiles.map((p: { id: string; display_name: string | null; avatar_url: string | null }) => [p.id, p]));
+
+  const challenges: Challenge[] = challengesResult.data.map((c: DatabaseChallenge) => {
+    const creator = profileMap.get(c.creator_id) ?? { display_name: null, avatar_url: null };
+    return mapChallenge(c, participantCounts.get(c.id) ?? 0, {
+      displayName: creator.display_name,
+      avatarUrl: creator.avatar_url,
+    });
+  });
+
+  return categorizeChallenges({
+    challenges,
+    participantChallengeIds: participantIds,
+    userId,
+    nowIso: now,
+  });
+}
+
+export async function getChallengeDetail(challengeId: string, userId: string | null | undefined): Promise<ChallengeDetail | null> {
+  const supabase = createAdminClient();
+
+  const [challengeResult, participantResult] = await Promise.all([
+    supabase.from("challenges").select("*").eq("id", challengeId).single(),
+    supabase.from("challenge_participants").select("*").eq("challenge_id", challengeId),
+  ]);
+
+  if (challengeResult.error) return null;
+  if (participantResult.error) throw participantResult.error;
+
+  const challenge = challengeResult.data as DatabaseChallenge;
+
+  const participantIds = (participantResult.data ?? []).map((p: DatabaseChallengeParticipant) => p.user_id);
+  const allIds = [...new Set([challenge.creator_id, ...participantIds])];
+  const profiles = allIds.length
+    ? await supabase.from("profiles").select("id,display_name,avatar_url").in("id", allIds).then((r) => r.data ?? [])
+    : [];
+
+  const profileMap = new Map(profiles.map((p: { id: string; display_name: string | null; avatar_url: string | null }) => [p.id, p]));
+
+  const creator = profileMap.get(challenge.creator_id) ?? { display_name: null, avatar_url: null };
+
+  // Compute progress for each participant on-the-fly
+  const participantPromises = (participantResult.data ?? []).map(async (p: DatabaseChallengeParticipant): Promise<ChallengeParticipant> => {
+    const profile = profileMap.get(p.user_id) ?? { display_name: null, avatar_url: null };
+    const progress = await computeChallengeProgress(p.user_id, challenge);
+    const isCompleted = progress >= challenge.target_value;
+    const completedAt = isCompleted ? p.completed_at ?? new Date().toISOString() : null;
+
+    if (progress !== p.progress || isCompleted !== p.completed || completedAt !== p.completed_at) {
+      await supabase
+        .from("challenge_participants")
+        .update({
+          progress,
+          completed: isCompleted,
+          completed_at: completedAt,
+        })
+        .eq("challenge_id", challengeId)
+        .eq("user_id", p.user_id);
+    }
+
+    return {
+      userId: p.user_id,
+      displayName: profile.display_name,
+      avatarUrl: profile.avatar_url,
+      progress,
+      completed: isCompleted,
+      completedAt,
+      joinedAt: p.joined_at,
+    };
+  });
+
+  const participants = sortChallengeParticipants(await Promise.all(participantPromises));
+
+  return {
+    ...mapChallenge(challenge, participants.length, { displayName: creator.display_name, avatarUrl: creator.avatar_url }),
+    participants,
+    isParticipant: userId ? participantIds.includes(userId) : false,
+    isCreator: userId === challenge.creator_id,
+  };
+}
+
+export async function createChallenge(
+  userId: string,
+  data: {
+    title: string;
+    description?: string;
+    challengeType: ChallengeType;
+    targetValue: number;
+    durationDays: number;
+  }
+): Promise<string> {
+  const supabase = createAdminClient();
+  const now = new Date();
+  const endsAt = new Date(now);
+  endsAt.setDate(endsAt.getDate() + data.durationDays);
+
+  const { data: challenge, error } = await supabase
+    .from("challenges")
+    .insert({
+      creator_id: userId,
+      title: data.title,
+      description: data.description ?? null,
+      challenge_type: data.challengeType,
+      target_value: data.targetValue,
+      duration_days: data.durationDays,
+      starts_at: now.toISOString(),
+      ends_at: endsAt.toISOString(),
+      is_public: true,
+    })
+    .select("id")
+    .single();
+
+  if (error) throw error;
+
+  const { error: participantError } = await supabase.from("challenge_participants").upsert(
+    {
+      challenge_id: challenge.id,
+      user_id: userId,
+      progress: 0,
+      completed: false,
+    },
+    { onConflict: "challenge_id,user_id", ignoreDuplicates: true }
+  );
+
+  if (participantError) throw participantError;
+
+  return challenge.id;
+}
+
+export async function joinChallenge(challengeId: string, userId: string): Promise<void> {
+  const supabase = createAdminClient();
+
+  const { data: challenge, error: challengeError } = await supabase
+    .from("challenges")
+    .select("id,ends_at")
+    .eq("id", challengeId)
+    .maybeSingle();
+
+  if (challengeError) throw challengeError;
+  if (!challenge) throw new Error("Challenge not found.");
+  if (challenge.ends_at <= new Date().toISOString()) throw new Error("This challenge has ended.");
+
+  const { error } = await supabase.from("challenge_participants").upsert(
+    {
+      challenge_id: challengeId,
+      user_id: userId,
+      progress: 0,
+      completed: false,
+    },
+    { onConflict: "challenge_id,user_id", ignoreDuplicates: true }
+  );
+
+  if (error) throw error;
+}
+
+export async function leaveChallenge(challengeId: string, userId: string): Promise<void> {
+  const supabase = createAdminClient();
+
+  const { error } = await supabase
+    .from("challenge_participants")
+    .delete()
+    .eq("challenge_id", challengeId)
+    .eq("user_id", userId);
+
+  if (error) throw error;
 }

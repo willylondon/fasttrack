@@ -9,6 +9,12 @@ FastTrack is a social intermittent fasting tracker built with Next.js App Router
 - Auth.js v5 wired for Google and GitHub using the Supabase adapter.
 - Supabase client helpers and a SQL migration for the `next_auth` adapter schema plus the FastTrack app tables.
 
+## Product and handover docs
+
+- `docs/FASTTRACK_PRD.md` - product requirements, user goals, roadmap, and open questions.
+- `docs/FASTTRACK_HANDOVER.md` - engineering handover for another agent continuing development.
+- `docs/SECOND_BRAIN_INGEST.md` - concise ingestion index for Second Brain context.
+
 ## Local setup
 
 1. Install dependencies:

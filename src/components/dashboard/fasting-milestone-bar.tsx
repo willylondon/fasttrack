@@ -1,10 +1,9 @@
 import { format } from "date-fns";
 
-import { formatStageHour } from "@/lib/fasting";
+import { formatCompactDuration, formatStageHour } from "@/lib/fasting";
 import {
-  FASTING_MILESTONES,
-  getCurrentMilestone,
-  getNextMilestone,
+  FASTING_STAGES,
+  getCurrentStage,
 } from "@/lib/fasting-stages";
 
 type FastingMilestoneBarProps = {
@@ -42,19 +41,19 @@ export function FastingMilestoneBar({
   }
 
   const elapsedHours = elapsedMinutes / 60;
-  const currentMilestone = getCurrentMilestone(elapsedHours);
-  const nextMilestone = getNextMilestone(elapsedHours);
+  const plannedHours = plannedMinutes / 60;
+  const currentMilestone = getCurrentStage(elapsedHours);
+  const nextMilestone = FASTING_STAGES.find((stage) => stage.hour > elapsedHours) ?? null;
+  const visibleMilestones = FASTING_STAGES.filter((stage) => stage.hour <= plannedHours);
   const progressPercent = Math.max(0, Math.min(100, (elapsedMinutes / plannedMinutes) * 100));
   const markerPercent = Math.max(1, Math.min(99, progressPercent));
   const endTime = new Date(Date.parse(startedAt) + plannedMinutes * 60000).toISOString();
   const cautionCopy =
-    elapsedMinutes >= 24 * 60
-      ? "This is an extended window. Medical guidance matters if longer fasting is part of your routine."
-      : elapsedMinutes >= 18 * 60
-        ? "This is an advanced window. Stay within your plan and stop if you feel unwell."
-        : elapsedMinutes > plannedMinutes
-          ? "Your planned window has passed. Stay within your plan and end when it feels appropriate."
-          : null;
+    elapsedMinutes >= 18 * 60
+      ? "This is FastTrack's cautious planning max. Stay within your plan and stop if you feel unwell."
+      : elapsedMinutes > plannedMinutes
+        ? "Your planned window has passed. Stay within your plan and end when it feels appropriate."
+        : null;
 
   return (
     <div className="glass-soft rounded-[1.7rem] p-4 sm:p-5">
@@ -89,11 +88,15 @@ export function FastingMilestoneBar({
               backgroundColor: currentMilestone.color,
             }}
           />
-          <div className="pointer-events-none absolute inset-x-0 top-1/2 hidden -translate-y-1/2 px-1 sm:flex sm:items-center sm:justify-between">
-            {FASTING_MILESTONES.map((milestone) => (
+          <div className="pointer-events-none absolute inset-x-0 top-1/2 hidden -translate-y-1/2 sm:block">
+            {visibleMilestones.map((milestone) => (
               <span
                 key={milestone.hour}
-                className="size-1.5 rounded-full bg-white/[0.18]"
+                className="absolute top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/[0.22]"
+                style={{
+                  left: `${Math.max(1, Math.min(99, (milestone.hour / plannedHours) * 100))}%`,
+                }}
+                title={`${formatStageHour(milestone.hour)} · ${milestone.label}`}
               />
             ))}
           </div>
@@ -102,9 +105,15 @@ export function FastingMilestoneBar({
 
       <div className="mt-4 grid gap-2 text-sm leading-6">
         <p className="text-muted-foreground">
-          Current:{" "}
+          Elapsed:{" "}
           <span className="font-medium text-foreground">
-            {formatStageHour(currentMilestone.hour)} in · {currentMilestone.label}
+            {formatCompactDuration(elapsedMinutes)}
+          </span>
+        </p>
+        <p className="text-muted-foreground">
+          Current stage:{" "}
+          <span className="font-medium text-foreground">
+            {currentMilestone.label} · begins at {formatStageHour(currentMilestone.hour)}
           </span>
         </p>
         <p className="text-muted-foreground">

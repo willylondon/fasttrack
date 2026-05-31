@@ -2,7 +2,6 @@
 
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
-import { toBlob } from "html-to-image";
 import { Check, Clock3, Flag, PencilLine, Share2, ShieldAlert, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -36,10 +35,17 @@ import {
   getStageIndexForMinutes,
   MANUAL_START_CONFIRM_MINUTES,
   MAX_MANUAL_START_BACKDATE_MINUTES,
+  MAX_PUBLIC_FAST_MINUTES,
   resolveManualStartTimeFromClock,
   validateManualStartTimestamp,
 } from "@/lib/fasting";
 import { FASTING_STAGES, type FastingStage } from "@/lib/fasting-stages";
+import {
+  buildPostSyncLocalDashboardData,
+  LOCAL_DASHBOARD_STORAGE_KEY,
+  readLocalDashboardData,
+  writeLocalDashboardData,
+} from "@/lib/local-dashboard";
 import { cn } from "@/lib/utils";
 
 type FastingTimerProps = {
@@ -51,6 +57,7 @@ type FastingTimerProps = {
 type PendingAction = "complete" | "cancel" | null;
 type StartTimeMode = "now" | "earlier";
 type StartDialogMode = "start" | "edit" | null;
+type WindowOptionLabel = (typeof WINDOW_OPTIONS)[number]["label"];
 
 type CompletionSummary = {
   durationMinutes: number;
@@ -79,8 +86,11 @@ const WINDOW_OPTIONS = [
   { label: "12h", minutes: 12 * 60 },
   { label: "14h", minutes: 14 * 60 },
   { label: "16h", minutes: 16 * 60 },
-  { label: "Custom", minutes: 14 * 60 },
+  { label: "18h", minutes: 18 * 60 },
 ] as const;
+
+const SAFETY_ACKNOWLEDGEMENT_KEY = "fasttrack:safety-acknowledged:v1";
+const SYNC_AFTER_SIGN_IN_KEY = `${LOCAL_DASHBOARD_STORAGE_KEY}:sync-after-sign-in`;
 
 const HOURLY_CHECK_INS = [
   "Choose a window that fits your day and begin when ready.",
@@ -89,8 +99,8 @@ const HOURLY_CHECK_INS = [
   "Notice how you feel and stay practical with the rest of your day.",
   "Small check-ins help. Water, routine, and steady pacing usually go further than pressure.",
   "If your energy feels steady, keep following the window you planned.",
-  "Stay flexible with your schedule. The goal is a repeatable habit, not a perfect streak.",
-  "A short reset can help. Step away, breathe, and let the clock do its work.",
+  "Keep your schedule practical. A repeatable window matters more than a perfect streak.",
+  "Check your plan for the day and adjust only if it still fits comfortably.",
   "This can be a common window for many routines. Let your plan guide the session.",
   "Keep the session measured and calm. You do not need to chase extra hours.",
   "If you are still feeling well, stay aligned with the window you chose.",
@@ -120,7 +130,7 @@ const CONFETTI_PIECES = Array.from({ length: 26 }, (_, index) => ({
   rotate: `${(index * 21) % 180}deg`,
   color: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
 }));
-const LOCAL_DASHBOARD_STORAGE_KEY = "fasttrack.local-dashboard.v1";
+const DASHBOARD_REFRESH_COOLDOWN_MS = 2 * 60 * 1000;
 
 async function readApiError(response: Response) {
   try {
@@ -161,65 +171,234 @@ function formatTime(value: string | null) {
   return format(new Date(value), "p");
 }
 
-function clampCustomHours(value: string) {
-  const parsed = Number(value);
-
-  if (!Number.isFinite(parsed)) {
-    return 14;
-  }
-
-  return Math.min(24, Math.max(12, parsed));
-}
-
 function getClockValue(value: string | null | undefined) {
   return format(new Date(value ?? Date.now()), "HH:mm");
 }
 
-function readLocalDashboardData() {
-  if (typeof window === "undefined") {
-    return EMPTY_DASHBOARD_DATA;
-  }
+type LiveTimerPanelProps = {
+  activeSession: DashboardData["activeSession"];
+  plannedMinutes: number;
+  selectedWindow: WindowOptionLabel;
+  isMutatingFast: boolean;
+  onSelectWindow: (windowLabel: WindowOptionLabel) => void;
+  onOpenStartTimeDialog: (mode: Exclude<StartDialogMode, null>) => void;
+  onPendingAction: (action: Exclude<PendingAction, null>) => void;
+  onStageReached: (stageIndex: number) => void;
+};
 
-  try {
-    const raw = window.localStorage.getItem(LOCAL_DASHBOARD_STORAGE_KEY);
+function LiveTimerPanel({
+  activeSession,
+  plannedMinutes,
+  selectedWindow,
+  isMutatingFast,
+  onSelectWindow,
+  onOpenStartTimeDialog,
+  onPendingAction,
+  onStageReached,
+}: LiveTimerPanelProps) {
+  const [now, setNow] = useState(() => Date.now());
 
-    if (!raw) {
-      return EMPTY_DASHBOARD_DATA;
+  useEffect(() => {
+    if (!activeSession) {
+      return;
     }
 
-    const parsed = JSON.parse(raw) as Partial<DashboardData>;
+    setNow(Date.now());
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
 
-    return {
-      ...EMPTY_DASHBOARD_DATA,
-      activeSession: parsed.activeSession ?? null,
-      sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
-      milestoneStageReached: typeof parsed.milestoneStageReached === "number" ? parsed.milestoneStageReached : 0,
-    };
-  } catch {
-    return EMPTY_DASHBOARD_DATA;
-  }
-}
+    return () => window.clearInterval(timer);
+  }, [activeSession]);
 
-function writeLocalDashboardData(data: DashboardData) {
-  if (typeof window === "undefined") {
-    return;
-  }
+  const elapsedMinutes = getElapsedMinutes(activeSession, now);
+  const progress = getProgressPercent(activeSession, now);
+  const currentStageIndex = getStageIndexForMinutes(elapsedMinutes);
+  const currentStage = getStageForMinutes(elapsedMinutes);
+  const remainingMinutes = activeSession ? Math.max(activeSession.plannedMinutes - elapsedMinutes, 0) : plannedMinutes;
+  const statusLabel = getStatusLabel(Boolean(activeSession), currentStage, remainingMinutes);
+  const hourlyCheckIn = getHourlyCheckIn(elapsedMinutes / 60, Boolean(activeSession));
+  const nextMilestone = FASTING_STAGES.find((stage) => stage.hour * 60 > elapsedMinutes);
+  const timerMetrics = [
+    { label: "Window", value: formatCompactDuration(activeSession?.plannedMinutes ?? plannedMinutes) },
+    { label: "Stage", value: activeSession ? currentStage.label : "Ready" },
+    { label: activeSession ? "Remaining" : "Starts", value: activeSession ? formatCompactDuration(remainingMinutes) : "Now" },
+    { label: "Next", value: nextMilestone ? `${formatStageHour(nextMilestone.hour)} ${nextMilestone.label}` : "Complete" },
+  ];
 
-  window.localStorage.setItem(
-    LOCAL_DASHBOARD_STORAGE_KEY,
-    JSON.stringify({
-      activeSession: data.activeSession,
-      sessions: data.sessions,
-      milestoneStageReached: data.milestoneStageReached,
-    })
+  useEffect(() => {
+    if (!activeSession || currentStageIndex === 0) {
+      return;
+    }
+
+    onStageReached(currentStageIndex);
+  }, [activeSession, currentStageIndex, onStageReached]);
+
+  return (
+    <>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)] lg:items-center">
+        <div className="order-1">
+          <TimerRing
+            active={Boolean(activeSession)}
+            elapsedMinutes={elapsedMinutes}
+            plannedMinutes={activeSession?.plannedMinutes ?? plannedMinutes}
+            progress={activeSession ? progress : 0}
+            stage={currentStage}
+          />
+          <div className="premium-rail mt-4 grid grid-cols-2 gap-2 rounded-[1.25rem] p-2 sm:grid-cols-4 lg:grid-cols-2">
+            {timerMetrics.map((metric) => (
+              <div key={metric.label} className="rounded-2xl px-3 py-2">
+                <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                  {metric.label}
+                </p>
+                <p className="mt-1 truncate text-sm font-semibold text-foreground">{metric.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="order-2 space-y-4">
+          {!activeSession ? (
+            <div className="glass-soft rounded-[1.7rem] p-4 sm:p-5">
+              <div className="space-y-3">
+                <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Choose a window</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {WINDOW_OPTIONS.map((option) => {
+                    const active = option.label === selectedWindow;
+
+                    return (
+                      <button
+                        aria-pressed={active}
+                        className={cn(
+                          "min-h-[48px] rounded-2xl border px-3 py-3 text-sm font-medium transition-colors",
+                          active
+                            ? "border-primary bg-primary/15 text-primary shadow-[0_12px_26px_rgba(139,92,246,0.18)]"
+                            : "border-white/[0.08] bg-white/[0.04] text-foreground hover:border-white/[0.14]"
+                        )}
+                        key={option.label}
+                        onClick={() => onSelectWindow(option.label)}
+                        type="button"
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Planned window: <span className="font-medium text-foreground">{formatCompactDuration(plannedMinutes)}</span>
+                </p>
+                {selectedWindow === "18h" ? (
+                  <p className="rounded-[1.1rem] border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-xs leading-5 text-amber-100">
+                    18h is FastTrack&apos;s cautious planning max for private beta. Stay within your plan and stop if you feel unwell.
+                  </p>
+                ) : null}
+                <div className="rounded-[1.3rem] border border-white/[0.08] bg-black/20 px-4 py-3">
+                  <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Current status</p>
+                  <p className="mt-2 text-base font-medium text-foreground">{statusLabel}</p>
+                </div>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  Choose <span className="font-medium text-foreground">Now</span> or set a recent start time if your
+                  fasting window began before you opened FastTrack.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                { label: "Started", value: formatTime(activeSession.startedAt) },
+                {
+                  label: "Ends",
+                  value: formatTime(
+                    new Date(Date.parse(activeSession.startedAt) + activeSession.plannedMinutes * 60000).toISOString()
+                  ),
+                },
+                { label: "Elapsed", value: formatDuration(elapsedMinutes) },
+                { label: "Remaining", value: formatDuration(remainingMinutes) },
+                { label: "Current status", value: statusLabel, fullWidth: true },
+              ].map((item) => (
+                <div
+                  className={cn(
+                    "glass-soft rounded-[1.4rem] px-4 py-4",
+                    item.fullWidth ? "sm:col-span-2" : undefined
+                  )}
+                  key={item.label}
+                >
+                  <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">{item.label}</p>
+                  <p className="mt-2 text-base font-medium text-foreground sm:text-lg">{item.value}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="premium-rail rounded-[1.25rem] px-4 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Coach note</p>
+              <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                {activeSession ? `Hour ${Math.floor(elapsedMinutes / 60)}` : "Before you start"}
+              </span>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-base">{hourlyCheckIn}</p>
+          </div>
+
+          <div className="grid gap-3">
+            {!activeSession ? (
+              <Button
+                className="h-12 w-full text-base font-semibold text-white"
+                disabled={isMutatingFast}
+                onClick={() => onOpenStartTimeDialog("start")}
+                size="lg"
+              >
+                <Flag className="size-4" />
+                Start fast
+              </Button>
+            ) : (
+              <>
+                <Button
+                  className="h-12 w-full text-base font-semibold text-white"
+                  disabled={isMutatingFast}
+                  onClick={() => onPendingAction("complete")}
+                  size="lg"
+                >
+                  <Check className="size-4" />
+                  End fast
+                </Button>
+                <Button
+                  className="h-11 w-full"
+                  disabled={isMutatingFast}
+                  onClick={() => onOpenStartTimeDialog("edit")}
+                  size="lg"
+                  variant="outline"
+                >
+                  <PencilLine className="size-4" />
+                  Edit start time
+                </Button>
+                <button
+                  className="min-h-[44px] text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  disabled={isMutatingFast}
+                  onClick={() => onPendingAction("cancel")}
+                  type="button"
+                >
+                  Cancel fast
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <FastingMilestoneBar
+        active={Boolean(activeSession)}
+        elapsedMinutes={elapsedMinutes}
+        plannedMinutes={activeSession?.plannedMinutes ?? plannedMinutes}
+        startedAt={activeSession?.startedAt ?? null}
+      />
+    </>
   );
 }
 
 export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProps) {
   const [dashboardData, setDashboardData] = useState(initialData);
-  const [selectedWindow, setSelectedWindow] = useState<(typeof WINDOW_OPTIONS)[number]["label"]>("16h");
-  const [customHours, setCustomHours] = useState("14");
-  const [now, setNow] = useState(Date.now());
+  const [selectedWindow, setSelectedWindow] = useState<WindowOptionLabel>("16h");
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [activeMilestoneIndex, setActiveMilestoneIndex] = useState<number | null>(null);
   const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null);
@@ -231,9 +410,16 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   const [startTimeValue, setStartTimeValue] = useState(() => getClockValue(new Date().toISOString()));
   const [startTimeError, setStartTimeError] = useState<string | null>(null);
   const [pendingStartAdjustment, setPendingStartAdjustment] = useState<PendingStartAdjustment | null>(null);
+  const [safetyAcknowledged, setSafetyAcknowledged] = useState(false);
+  const [safetyDialogOpen, setSafetyDialogOpen] = useState(false);
   const [localDashboardReady, setLocalDashboardReady] = useState(false);
   const milestoneInFlightRef = useRef(false);
+  const lastDashboardRefreshRef = useRef(0);
   const shareCardRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setSafetyAcknowledged(window.localStorage.getItem(SAFETY_ACKNOWLEDGEMENT_KEY) === "true");
+  }, []);
 
   useEffect(() => {
     if (signedIn) {
@@ -254,30 +440,8 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     writeLocalDashboardData(dashboardData);
   }, [dashboardData, localDashboardReady, signedIn]);
 
-  useEffect(() => {
-    if (!dashboardData.activeSession) {
-      return;
-    }
-
-    const timer = window.setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
-
-    return () => window.clearInterval(timer);
-  }, [dashboardData.activeSession]);
-
-  const plannedMinutes =
-    selectedWindow === "Custom"
-      ? clampCustomHours(customHours) * 60
-      : WINDOW_OPTIONS.find((option) => option.label === selectedWindow)?.minutes ?? 16 * 60;
+  const plannedMinutes = WINDOW_OPTIONS.find((option) => option.label === selectedWindow)?.minutes ?? 16 * 60;
   const activeSession = dashboardData.activeSession;
-  const elapsedMinutes = getElapsedMinutes(activeSession, now);
-  const progress = getProgressPercent(activeSession, now);
-  const currentStageIndex = getStageIndexForMinutes(elapsedMinutes);
-  const currentStage = getStageForMinutes(elapsedMinutes);
-  const remainingMinutes = activeSession ? Math.max(activeSession.plannedMinutes - elapsedMinutes, 0) : plannedMinutes;
-  const statusLabel = getStatusLabel(Boolean(activeSession), currentStage, remainingMinutes);
-  const hourlyCheckIn = getHourlyCheckIn(elapsedMinutes / 60, Boolean(activeSession));
   const selectedStartPreview = (() => {
     if (!startDialogMode) {
       return null;
@@ -316,11 +480,17 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   const previewRemainingMinutes = Math.max(previewPlannedMinutes - previewElapsedMinutes, 0);
   const previewStage = getStageForMinutes(previewElapsedMinutes);
   const showExtendedWindowWarning = previewElapsedMinutes >= 18 * 60;
-
-  const refreshDashboard = useCallback(async () => {
+  const refreshDashboard = useCallback(async (options?: { force?: boolean; quiet?: boolean }) => {
     if (!userId) {
       return undefined;
     }
+
+    const currentTime = Date.now();
+    if (!options?.force && currentTime - lastDashboardRefreshRef.current < DASHBOARD_REFRESH_COOLDOWN_MS) {
+      return undefined;
+    }
+
+    lastDashboardRefreshRef.current = currentTime;
 
     try {
       const response = await fetch("/api/dashboard", {
@@ -336,29 +506,87 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
       setDashboardData(nextDashboard);
       return nextDashboard;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Dashboard refresh failed.");
+      if (!options?.quiet) {
+        toast.error(error instanceof Error ? error.message : "Dashboard refresh failed.");
+      }
       return undefined;
     }
   }, [userId]);
+
+  useEffect(() => {
+    if (!signedIn || !userId) {
+      return;
+    }
+
+    if (window.sessionStorage.getItem(SYNC_AFTER_SIGN_IN_KEY) !== "true") {
+      return;
+    }
+
+    window.sessionStorage.removeItem(SYNC_AFTER_SIGN_IN_KEY);
+    const localData = readLocalDashboardData();
+
+    if (!localData.activeSession) {
+      return;
+    }
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/fasts", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            plannedMinutes: localData.activeSession?.plannedMinutes,
+            startedAt: localData.activeSession?.startedAt,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(await readApiError(response));
+        }
+
+        const remainingLocalData = buildPostSyncLocalDashboardData(localData);
+
+        if (remainingLocalData) {
+          writeLocalDashboardData(remainingLocalData);
+        } else {
+          window.localStorage.removeItem(LOCAL_DASHBOARD_STORAGE_KEY);
+        }
+        await refreshDashboard({ force: true });
+        toast.success("Local fast synced to your account.");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Your local fast could not be saved.");
+      }
+    })();
+  }, [refreshDashboard, signedIn, userId]);
 
   useEffect(() => {
     if (!userId) {
       return;
     }
 
-    const poller = window.setInterval(() => {
-      void refreshDashboard();
-    }, 60000);
+    const refreshWhenActive = () => {
+      if (document.visibilityState === "visible") {
+        void refreshDashboard({ quiet: true });
+      }
+    };
 
-    return () => window.clearInterval(poller);
+    window.addEventListener("focus", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
+
+    return () => {
+      window.removeEventListener("focus", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
+    };
   }, [refreshDashboard, userId]);
 
-  useEffect(() => {
-    if (!activeSession || currentStageIndex === 0) {
+  const handleStageReached = useCallback((stageIndex: number) => {
+    if (!activeSession || stageIndex === 0) {
       return;
     }
 
-    if (currentStageIndex <= dashboardData.milestoneStageReached || milestoneInFlightRef.current) {
+    if (stageIndex <= dashboardData.milestoneStageReached || milestoneInFlightRef.current) {
       return;
     }
 
@@ -367,15 +595,15 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     if (!userId) {
       setDashboardData((current) => ({
         ...current,
-        milestoneStageReached: currentStageIndex,
+        milestoneStageReached: stageIndex,
         activeSession: current.activeSession
           ? {
               ...current.activeSession,
-              stageReached: currentStageIndex,
+              stageReached: stageIndex,
             }
           : null,
       }));
-      setActiveMilestoneIndex(currentStageIndex);
+      setActiveMilestoneIndex(stageIndex);
       milestoneInFlightRef.current = false;
       return;
     }
@@ -389,7 +617,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
           },
           body: JSON.stringify({
             action: "milestone",
-            stageIndex: currentStageIndex,
+            stageIndex,
           }),
         });
 
@@ -399,22 +627,22 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
 
         setDashboardData((current) => ({
           ...current,
-          milestoneStageReached: currentStageIndex,
+          milestoneStageReached: stageIndex,
           activeSession: current.activeSession
             ? {
                 ...current.activeSession,
-                stageReached: currentStageIndex,
+                stageReached: stageIndex,
               }
             : null,
         }));
-        setActiveMilestoneIndex(currentStageIndex);
+        setActiveMilestoneIndex(stageIndex);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Milestone sync failed.");
       } finally {
         milestoneInFlightRef.current = false;
       }
     })();
-  }, [activeSession, currentStageIndex, dashboardData.milestoneStageReached, userId]);
+  }, [activeSession, dashboardData.milestoneStageReached, userId]);
 
   function openStartTimeDialog(mode: Exclude<StartDialogMode, null>) {
     if (mode === "start" && activeSession) {
@@ -422,10 +650,25 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
       return;
     }
 
+    if (mode === "start" && !safetyAcknowledged) {
+      setSafetyDialogOpen(true);
+      return;
+    }
+
     setStartDialogMode(mode);
     setStartTimeError(null);
     setStartTimeMode(mode === "edit" ? "earlier" : "now");
     setStartTimeValue(getClockValue(mode === "edit" ? activeSession?.startedAt : new Date().toISOString()));
+  }
+
+  function acknowledgeSafetyAndStart() {
+    window.localStorage.setItem(SAFETY_ACKNOWLEDGEMENT_KEY, "true");
+    setSafetyAcknowledged(true);
+    setSafetyDialogOpen(false);
+    setStartDialogMode("start");
+    setStartTimeError(null);
+    setStartTimeMode("now");
+    setStartTimeValue(getClockValue(new Date().toISOString()));
   }
 
   function closeStartTimeDialog() {
@@ -437,6 +680,11 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   async function applyStartTimeChange(payload: PendingStartAdjustment) {
     if (payload.mode === "edit" && !activeSession) {
       toast.error("No active fast is available to adjust.");
+      return;
+    }
+
+    if (plannedMinutes > MAX_PUBLIC_FAST_MINUTES) {
+      toast.error("FastTrack supports planned windows up to 18 hours for this beta.");
       return;
     }
 
@@ -469,7 +717,6 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         return;
       }
 
-      setNow(Date.now());
       setDashboardData((current) => ({
         ...current,
         activeSession: localSession,
@@ -510,13 +757,11 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
       }
 
       const responsePayload = (await response.json()) as { session: DashboardData["activeSession"] };
-      setNow(Date.now());
       setDashboardData((current) => ({
         ...current,
         activeSession: responsePayload.session,
         milestoneStageReached: responsePayload.session?.stageReached ?? 0,
       }));
-      await refreshDashboard();
       closeStartTimeDialog();
       toast.success(payload.mode === "start" ? "Fast started. Progress saved." : "Start time updated. Progress recalculated.");
     } catch (error) {
@@ -562,6 +807,13 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     if (!userId) {
       const endedAt = new Date().toISOString();
       const durationMinutes = Math.max(0, Math.round((Date.parse(endedAt) - Date.parse(activeSession.startedAt)) / 60000));
+
+      if (action === "complete" && durationMinutes < 1) {
+        setPendingAction(null);
+        toast.error("Fast must run for at least 1 minute before it can be completed. Cancel it instead if this was a mistake.");
+        return;
+      }
+
       const finalStageReached = Math.max(activeSession.stageReached ?? 0, getStageIndexForMinutes(durationMinutes));
       const finishedSession = {
         ...activeSession,
@@ -575,7 +827,6 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
 
       setPendingAction(null);
       setActiveMilestoneIndex(null);
-      setNow(Date.now());
       setDashboardData((current) => ({
         ...current,
         activeSession: null,
@@ -628,7 +879,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
       setPendingAction(null);
       setActiveMilestoneIndex(null);
 
-      const nextDashboard = await refreshDashboard();
+      const nextDashboard = await refreshDashboard({ force: true });
 
       if (action === "complete" && finishedSession) {
         const stage = getStageForMinutes(finishedSession.durationMinutes ?? 0);
@@ -669,6 +920,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     setIsSharingResult(true);
 
     try {
+      const { toBlob } = await import("html-to-image");
       const blob = await toBlob(shareCardRef.current, {
         cacheBust: true,
         pixelRatio: 1,
@@ -720,7 +972,36 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-      <Card className="section-enter overflow-hidden" style={{ animationDelay: "0ms" }}>
+      {!signedIn && !activeSession ? (
+        <Card className="section-enter surface-primary relative overflow-hidden" style={{ animationDelay: "0ms" }}>
+          <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+          <CardContent className="grid gap-5 p-5 sm:p-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+            <div>
+              <Badge className="w-fit">Private beta preview</Badge>
+              <h2 className="mt-4 font-[family:var(--font-heading)] text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                Track a safer fasting window before you create an account.
+              </h2>
+              <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground sm:text-base">
+                Try the FastTrack timer locally, review milestone guidance, and sync later when you are ready.
+              </p>
+            </div>
+            <div className="premium-rail grid grid-cols-3 gap-2 rounded-[1.35rem] p-2 text-center">
+              {[
+                { label: "Core goals", value: "12-16h" },
+                { label: "Cautious max", value: "18h" },
+                { label: "Saved here", value: "Local" },
+              ].map((item) => (
+                <div key={item.label} className="rounded-2xl px-2 py-3">
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{item.label}</p>
+                  <p className="mt-2 text-sm font-semibold text-foreground sm:text-base">{item.value}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+      <Card className="surface-primary section-enter relative overflow-hidden" style={{ animationDelay: "0ms" }}>
+        <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
         <CardContent className="space-y-6 p-4 sm:p-6">
           <div className="flex flex-col gap-3">
             <div className="space-y-2">
@@ -738,164 +1019,15 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
             </div>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)] lg:items-center">
-            <div className="order-1">
-              <TimerRing
-                active={Boolean(activeSession)}
-                elapsedMinutes={elapsedMinutes}
-                plannedMinutes={activeSession?.plannedMinutes ?? plannedMinutes}
-                progress={activeSession ? progress : 0}
-                stage={currentStage}
-              />
-            </div>
-
-            <div className="order-2 space-y-4">
-              {!activeSession ? (
-                <div className="glass-soft rounded-[1.7rem] p-4 sm:p-5">
-                  <div className="space-y-3">
-                    <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Choose a window</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {WINDOW_OPTIONS.map((option) => {
-                        const active = option.label === selectedWindow;
-
-                        return (
-                          <button
-                            aria-pressed={active}
-                            className={cn(
-                              "min-h-[48px] rounded-2xl border px-3 py-3 text-sm font-medium transition-colors",
-                              active
-                                ? "border-primary bg-primary/15 text-primary shadow-[0_12px_26px_rgba(139,92,246,0.18)]"
-                                : "border-white/[0.08] bg-white/[0.04] text-foreground hover:border-white/[0.14]"
-                            )}
-                            key={option.label}
-                            onClick={() => setSelectedWindow(option.label)}
-                            type="button"
-                          >
-                            {option.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {selectedWindow === "Custom" ? (
-                      <div className="space-y-2">
-                        <label
-                          className="text-xs uppercase tracking-[0.24em] text-muted-foreground"
-                          htmlFor="custom-hours"
-                        >
-                          Custom hours
-                        </label>
-                        <Input
-                          id="custom-hours"
-                          inputMode="numeric"
-                          max={24}
-                          min={12}
-                          onChange={(event) => setCustomHours(event.target.value)}
-                          value={customHours}
-                        />
-                      </div>
-                    ) : null}
-                    <p className="text-sm text-muted-foreground">
-                      Planned window: <span className="font-medium text-foreground">{formatCompactDuration(plannedMinutes)}</span>
-                    </p>
-                    <div className="rounded-[1.3rem] border border-white/[0.08] bg-black/20 px-4 py-3">
-                      <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Current status</p>
-                      <p className="mt-2 text-base font-medium text-foreground">{statusLabel}</p>
-                    </div>
-                    <p className="text-sm leading-6 text-muted-foreground">
-                      Choose <span className="font-medium text-foreground">Now</span> or set a recent start time if your
-                      fasting window began before you opened FastTrack.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {[
-                    { label: "Started", value: formatTime(activeSession.startedAt) },
-                    {
-                      label: "Ends",
-                      value: formatTime(
-                        new Date(Date.parse(activeSession.startedAt) + activeSession.plannedMinutes * 60000).toISOString()
-                      ),
-                    },
-                    { label: "Elapsed", value: formatDuration(elapsedMinutes) },
-                    { label: "Remaining", value: formatDuration(remainingMinutes) },
-                    { label: "Current status", value: statusLabel, fullWidth: true },
-                  ].map((item) => (
-                    <div
-                      className={cn(
-                        "glass-soft rounded-[1.4rem] px-4 py-4",
-                        item.fullWidth ? "sm:col-span-2" : undefined
-                      )}
-                      key={item.label}
-                    >
-                      <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">{item.label}</p>
-                      <p className="mt-2 text-base font-medium text-foreground sm:text-lg">{item.value}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="glass-soft rounded-[1.7rem] p-4 sm:p-5">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Hourly check-in</p>
-                  <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                    {activeSession ? `Hour ${Math.floor(elapsedMinutes / 60)}` : "Before you start"}
-                  </span>
-                </div>
-                <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-base">{hourlyCheckIn}</p>
-              </div>
-
-              <div className="grid gap-3">
-                {!activeSession ? (
-                  <Button
-                    className="h-12 w-full text-base font-semibold text-white"
-                    disabled={isMutatingFast}
-                    onClick={() => openStartTimeDialog("start")}
-                    size="lg"
-                  >
-                    <Flag className="size-4" />
-                    Start fast
-                  </Button>
-                ) : (
-                  <>
-                    <Button
-                      className="h-12 w-full text-base font-semibold text-white"
-                      disabled={isMutatingFast}
-                      onClick={() => setPendingAction("complete")}
-                      size="lg"
-                    >
-                      <Check className="size-4" />
-                      End fast
-                    </Button>
-                    <Button
-                      className="h-11 w-full"
-                      disabled={isMutatingFast}
-                      onClick={() => openStartTimeDialog("edit")}
-                      size="lg"
-                      variant="outline"
-                    >
-                      <PencilLine className="size-4" />
-                      Edit start time
-                    </Button>
-                    <button
-                      className="min-h-[44px] text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-                      disabled={isMutatingFast}
-                      onClick={() => setPendingAction("cancel")}
-                      type="button"
-                    >
-                      Cancel fast
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <FastingMilestoneBar
-            active={Boolean(activeSession)}
-            elapsedMinutes={elapsedMinutes}
-            plannedMinutes={activeSession?.plannedMinutes ?? plannedMinutes}
-            startedAt={activeSession?.startedAt ?? null}
+          <LiveTimerPanel
+            activeSession={activeSession}
+            isMutatingFast={isMutatingFast}
+            onOpenStartTimeDialog={openStartTimeDialog}
+            onPendingAction={setPendingAction}
+            onSelectWindow={setSelectedWindow}
+            onStageReached={handleStageReached}
+            plannedMinutes={plannedMinutes}
+            selectedWindow={selectedWindow}
           />
         </CardContent>
       </Card>
@@ -915,6 +1047,40 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         </CardContent>
       </Card>
 
+      <Dialog open={safetyDialogOpen} onOpenChange={setSafetyDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Safety acknowledgement</DialogTitle>
+            <DialogDescription>
+              FastTrack is a tracker only. It is not medical advice and it does not decide whether fasting is safe for you.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 text-sm leading-6 text-muted-foreground">
+            <div className="premium-rail rounded-[1.25rem] px-4 py-4">
+              <p className="font-medium text-foreground">Do not start a fast without qualified medical guidance if you are:</p>
+              <ul className="mt-3 list-disc space-y-2 pl-5">
+                <li>Under 18.</li>
+                <li>Pregnant, trying to become pregnant, or breastfeeding.</li>
+                <li>Diabetic, using glucose-lowering medication, or managing blood sugar risk.</li>
+                <li>Underweight, medically at risk, or recovering from illness.</li>
+                <li>Living with current or past eating-disorder history.</li>
+              </ul>
+            </div>
+            <p>
+              By continuing, you confirm you understand FastTrack only records fasting windows and that you are responsible for using it safely.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSafetyDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={acknowledgeSafetyAndStart}>
+              I understand
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {startDialogMode && !pendingStartAdjustment ? (
         <Dialog
           open
@@ -924,7 +1090,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
             }
           }}
         >
-          <DialogContent className="mx-2 max-w-[calc(100vw-1rem)] sm:mx-auto sm:max-w-lg">
+          <DialogContent className="mx-2 max-w-[calc(100vw-1rem)] top-[calc(env(safe-area-inset-top)+0.75rem)] bottom-[calc(env(safe-area-inset-bottom)+7.5rem)] max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-8.25rem)] translate-y-0 overflow-y-auto overscroll-contain pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:bottom-auto sm:top-1/2 sm:mx-auto sm:max-h-[min(720px,calc(100dvh-2rem))] sm:max-w-lg sm:-translate-y-1/2 sm:pb-5">
             <DialogHeader>
               <DialogTitle>When did your fast start?</DialogTitle>
               <DialogDescription>
@@ -1036,7 +1202,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
               {startTimeError ? <p className="text-sm text-destructive">{startTimeError}</p> : null}
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="sticky bottom-0 z-10">
               <Button onClick={closeStartTimeDialog} variant="outline">
                 Keep current
               </Button>

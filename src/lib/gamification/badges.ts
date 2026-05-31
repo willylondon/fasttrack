@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { BadgeDefinition, FASTING_STAGES, mapBadge } from "@/lib/fasting";
+import { FASTING_STAGES, mapBadge } from "@/lib/fasting";
+import type { BadgeDefinition } from "@/lib/fasting";
 
 const BADGE_SEED = [
   {
@@ -32,26 +33,6 @@ const BADGE_SEED = [
     requirement_type: "milestone_hours",
     requirement_value: 18,
     xp_reward: 100,
-  },
-  {
-    name: "One Day Strong",
-    slug: "one-day-strong",
-    description: "Completed a full 24-hour reset.",
-    icon: "🏆",
-    category: "milestone",
-    requirement_type: "milestone_hours",
-    requirement_value: 24,
-    xp_reward: 140,
-  },
-  {
-    name: "Deep Healer",
-    slug: "deep-healer",
-    description: "Crossed into 36-hour deep healing territory.",
-    icon: "🧘",
-    category: "milestone",
-    requirement_type: "milestone_hours",
-    requirement_value: 36,
-    xp_reward: 200,
   },
   {
     name: "Centurion",
@@ -196,26 +177,12 @@ type BadgeStats = {
 };
 
 export async function ensureBadgeCatalogSeeded(supabase: SupabaseClient) {
-  const badgeResult = await supabase.from("badges").select("id").limit(1);
-
-  if (badgeResult.error) {
-    throw badgeResult.error;
-  }
-
-  if ((badgeResult.data ?? []).length > 0) {
-    return;
-  }
-
-  const insertResult = await supabase.from("badges").insert(BADGE_SEED);
-
-  if (insertResult.error) {
-    throw insertResult.error;
-  }
+  // Badge catalog seeding now lives in 20260527120003_seed_badges.sql; keep this as a no-op compatibility hook.
+  void supabase;
+  void BADGE_SEED;
 }
 
 export async function checkBadges(userId: string, supabase: SupabaseClient) {
-  await ensureBadgeCatalogSeeded(supabase);
-
   const [profileResult, badgeResult, earnedResult, challengeResult, friendshipResult] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", userId).single(),
     supabase.from("badges").select("*").order("name"),

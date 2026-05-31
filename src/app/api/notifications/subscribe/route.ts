@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { getZodMessage, jsonMessage, readJsonBody } from "@/lib/api-responses";
 import { getCurrentUserId } from "@/lib/fasting-data";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -23,7 +24,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const payload = subscribeSchema.parse(await request.json());
+  const body = await readJsonBody(request);
+
+  if (body.error) {
+    return jsonMessage(body.error, 400);
+  }
+
+  const parsed = subscribeSchema.safeParse(body.data);
+
+  if (!parsed.success) {
+    return jsonMessage(getZodMessage(parsed.error), 400);
+  }
+
+  const payload = parsed.data;
   const supabase = createAdminClient();
 
   if (!payload.enabled) {

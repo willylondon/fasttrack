@@ -94,7 +94,7 @@ export const ShareFastCard = forwardRef<HTMLDivElement, ShareFastCardProps>(func
 
         <div className="flex items-end justify-between gap-10 pt-10">
           <p className="max-w-[460px] text-left text-[24px] leading-[1.4] text-white/58">
-            Build your streak. Track your window. Stay accountable.
+            Track your window. Stay consistent.
           </p>
           <p className="max-w-[280px] text-right text-[20px] uppercase tracking-[0.18em] leading-[1.2] text-white/58">
             Tracked with FastTrack

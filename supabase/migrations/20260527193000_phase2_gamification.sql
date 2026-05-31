@@ -27,8 +27,6 @@ values
   ('First Fast', 'first-fast', 'Completed your very first fast.', '🌱', 'milestone', 'first_fast', 1, 50),
   ('Sweet Spot', 'sweet-spot', 'Reached the 16-hour autophagy sweet spot.', '🧬', 'milestone', 'milestone_hours', 16, 80),
   ('Extended Warrior', 'extended-warrior', 'Held strong through an 18-hour fast.', '⚔️', 'milestone', 'milestone_hours', 18, 100),
-  ('One Day Strong', 'one-day-strong', 'Completed a full 24-hour reset.', '🏆', 'milestone', 'milestone_hours', 24, 140),
-  ('Deep Healer', 'deep-healer', 'Crossed into 36-hour deep healing territory.', '🧘', 'milestone', 'milestone_hours', 36, 200),
   ('Centurion', 'centurion', 'Completed 100 fasts.', '💯', 'special', 'total_fasts', 100, 300),
   ('3-Day Streak', '3-day-streak', 'Built a 3-day fasting streak.', '🔥', 'streak', 'streak_days', 3, 60),
   ('7-Day Streak', '7-day-streak', 'Built a 7-day fasting streak.', '🔥', 'streak', 'streak_days', 7, 120),
@@ -51,3 +49,6 @@ set
   requirement_type = excluded.requirement_type,
   requirement_value = excluded.requirement_value,
   xp_reward = excluded.xp_reward;
+
+delete from public.badges
+where slug in ('one-day-strong', 'deep-healer');

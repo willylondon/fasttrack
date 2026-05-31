@@ -6,7 +6,15 @@ import { Download, Smartphone, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type InstallPromptProps = {
-  currentPath: "/" | "/history" | "/feed" | "/friends" | "/leaderboard" | "/profile";
+  currentPath:
+    | "/"
+    | "/history"
+    | "/feed"
+    | "/friends"
+    | "/leaderboard"
+    | "/profile"
+    | "/challenges"
+    | `/challenges/${string}`;
 };
 
 type BeforeInstallPromptEvent = Event & {
@@ -14,7 +22,8 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
 
-const DISMISS_KEY = "fasttrack-install-dismissed-v1";
+const DISMISS_KEY = "fasttrack-install-dismissed-v2";
+const DISMISS_DURATION_MS = 14 * 24 * 60 * 60 * 1000;
 
 function isStandalone() {
   if (typeof window === "undefined") {
@@ -29,6 +38,14 @@ export function InstallPrompt({ currentPath }: InstallPromptProps) {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [supportsPrompt, setSupportsPrompt] = useState(false);
 
+  const isAndroidMobile = useMemo(() => {
+    if (typeof navigator === "undefined") {
+      return false;
+    }
+
+    return /android/i.test(navigator.userAgent);
+  }, []);
+
   const isAppleMobile = useMemo(() => {
     if (typeof navigator === "undefined") {
       return false;
@@ -39,7 +56,9 @@ export function InstallPrompt({ currentPath }: InstallPromptProps) {
 
   useEffect(() => {
     const savedDismissal = window.localStorage.getItem(DISMISS_KEY);
-    setDismissed(savedDismissal === "1" || isStandalone());
+    const dismissedAt = savedDismissal ? Number(savedDismissal) : 0;
+    const dismissalStillActive = dismissedAt > 0 && Date.now() - dismissedAt < DISMISS_DURATION_MS;
+    setDismissed(dismissalStillActive || isStandalone());
 
     const handlePromptReady = (event: Event) => {
       event.preventDefault();
@@ -64,7 +83,7 @@ export function InstallPrompt({ currentPath }: InstallPromptProps) {
 
     if (choice.outcome === "accepted") {
       setDismissed(true);
-      window.localStorage.setItem(DISMISS_KEY, "1");
+      window.localStorage.setItem(DISMISS_KEY, Date.now().toString());
     }
 
     setDeferredPrompt(null);
@@ -72,14 +91,14 @@ export function InstallPrompt({ currentPath }: InstallPromptProps) {
 
   function handleDismiss() {
     setDismissed(true);
-    window.localStorage.setItem(DISMISS_KEY, "1");
+    window.localStorage.setItem(DISMISS_KEY, Date.now().toString());
   }
 
-  if (dismissed || currentPath !== "/") {
+  if (dismissed || currentPath.startsWith("/challenges/")) {
     return null;
   }
 
-  if (!supportsPrompt && !isAppleMobile) {
+  if (!supportsPrompt && !isAppleMobile && !isAndroidMobile) {
     return null;
   }
 
@@ -103,7 +122,9 @@ export function InstallPrompt({ currentPath }: InstallPromptProps) {
             <p className="mt-2 text-sm leading-6 text-foreground">
               {supportsPrompt
                 ? "Install FastTrack on this device for a cleaner, app-like experience."
-                : "Install FastTrack: tap Share, then Add to Home Screen."}
+                : isAndroidMobile
+                  ? "Install FastTrack: open Chrome's menu, then tap Install app or Add to Home screen."
+                  : "Install FastTrack: tap Share, then Add to Home Screen."}
             </p>
           </div>
         </div>

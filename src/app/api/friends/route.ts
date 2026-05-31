@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { getErrorMessage, getErrorStatus, getZodMessage, jsonMessage, readJsonBody } from "@/lib/api-responses";
 import { createFriendRequest, getCurrentUserId, getFriendsPageData } from "@/lib/fasting-data";
 
 const createFriendSchema = z.object({
@@ -14,9 +15,13 @@ export async function GET() {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const friends = await getFriendsPageData(userId);
+  try {
+    const friends = await getFriendsPageData(userId);
 
-  return NextResponse.json(friends);
+    return NextResponse.json(friends);
+  } catch (error) {
+    return jsonMessage(getErrorMessage(error, "Unable to load friends."), 500);
+  }
 }
 
 export async function POST(request: Request) {
@@ -26,8 +31,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const payload = createFriendSchema.parse(await request.json());
-  const friendshipId = await createFriendRequest(userId, payload.email);
+  const body = await readJsonBody(request);
 
-  return NextResponse.json({ friendshipId });
+  if (body.error) {
+    return jsonMessage(body.error, 400);
+  }
+
+  const parsed = createFriendSchema.safeParse(body.data);
+
+  if (!parsed.success) {
+    return jsonMessage(getZodMessage(parsed.error), 400);
+  }
+
+  try {
+    const friendshipId = await createFriendRequest(userId, parsed.data.email);
+
+    return NextResponse.json({ friendshipId });
+  } catch (error) {
+    const message = getErrorMessage(error, "Unable to create friend request.");
+    return jsonMessage(message, getErrorStatus(message));
+  }
 }

@@ -1,6 +1,5 @@
 import { ImageResponse } from "next/og";
 
-export const runtime = "edge";
 export const alt = "FastTrack";
 export const size = {
   width: 1200,
@@ -11,13 +10,13 @@ export const contentType = "image/png";
 export default function OpenGraphImage() {
   return new ImageResponse(
     (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          background: "radial-gradient(circle at top left, rgba(45,212,191,0.18), transparent 25%), linear-gradient(180deg, #111111 0%, #090909 100%)",
-          color: "white",
+	      <div
+	        style={{
+	          width: "100%",
+	          height: "100%",
+	          display: "flex",
+	          background: "#0b0b0b",
+	          color: "white",
           padding: "48px",
           fontFamily: "sans-serif",
         }}
@@ -35,20 +34,20 @@ export default function OpenGraphImage() {
         >
           <div style={{ display: "flex", flex: 1, flexDirection: "column", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
-              <div
-                style={{
-                  width: "96px",
-                  height: "96px",
-                  borderRadius: "28px",
-                  background: "linear-gradient(135deg, #14b8a6 0%, #8B5CF6 100%)",
+	              <div
+	                style={{
+	                  width: "96px",
+	                  height: "96px",
+	                  borderRadius: "28px",
+	                  background: "linear-gradient(135deg, #8B5CF6 0%, #22C55E 100%)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   fontSize: "42px",
                   fontWeight: 700,
                 }}
-              >
-                F
+	              >
+	                FT
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                 <div style={{ fontSize: "32px", opacity: 0.72, letterSpacing: "0.28em", textTransform: "uppercase" }}>

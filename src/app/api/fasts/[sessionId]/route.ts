@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { getErrorMessage, getErrorStatus, getZodMessage, jsonMessage, readJsonBody } from "@/lib/api-responses";
 import { getCurrentUserId, recordMilestone, updateFast, updateFastStartTime } from "@/lib/fasting-data";
 
 const updateFastSchema = z.discriminatedUnion("action", [
@@ -23,33 +24,51 @@ const updateFastSchema = z.discriminatedUnion("action", [
 ]);
 
 type RouteContext = {
-  params: {
+  params: Promise<{
     sessionId: string;
-  };
+  }>;
 };
 
 export async function PATCH(request: Request, { params }: RouteContext) {
   const userId = await getCurrentUserId();
+  const { sessionId } = await params;
 
   if (!userId) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const payload = updateFastSchema.parse(await request.json());
+  const body = await readJsonBody(request);
 
-  if (payload.action === "milestone") {
-    const stage = await recordMilestone(userId, params.sessionId, payload.stageIndex);
-
-    return NextResponse.json({ stage });
+  if (body.error) {
+    return jsonMessage(body.error, 400);
   }
 
-  if (payload.action === "edit_start") {
-    const session = await updateFastStartTime(userId, params.sessionId, payload.startedAt);
+  const parsed = updateFastSchema.safeParse(body.data);
 
-    return NextResponse.json({ session });
+  if (!parsed.success) {
+    return jsonMessage(getZodMessage(parsed.error), 400);
   }
 
-  const result = await updateFast(userId, params.sessionId, payload.action, payload.notes);
+  const payload = parsed.data;
 
-  return NextResponse.json(result);
+  try {
+    if (payload.action === "milestone") {
+      const stage = await recordMilestone(userId, sessionId, payload.stageIndex);
+
+      return NextResponse.json({ stage });
+    }
+
+    if (payload.action === "edit_start") {
+      const session = await updateFastStartTime(userId, sessionId, payload.startedAt);
+
+      return NextResponse.json({ session });
+    }
+
+    const result = await updateFast(userId, sessionId, payload.action, payload.notes);
+
+    return NextResponse.json(result);
+  } catch (error) {
+    const message = getErrorMessage(error, "Unable to update fast.");
+    return jsonMessage(message, getErrorStatus(message));
+  }
 }

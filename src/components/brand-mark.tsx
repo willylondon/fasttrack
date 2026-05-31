@@ -11,7 +11,7 @@ export function BrandMark() {
           FastTrack
         </p>
         <p className="hidden text-xs uppercase tracking-[0.18em] text-muted-foreground sm:block">
-          Social fasting, one streak at a time.
+          Track your window. Stay consistent.
         </p>
       </div>
     </div>

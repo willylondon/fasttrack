@@ -69,6 +69,22 @@ function renderRows(entries: LeaderboardEntry[], statLabel: string) {
               <p className="text-xs text-muted-foreground">
                 Level {entry.level} • {entry.supportingStat}
               </p>
+              <div
+                className={cn(
+                  "mt-2 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em]",
+                  entry.currentStage ? "bg-white/[0.04]" : "border-border/60 bg-background/40 text-muted-foreground"
+                )}
+                style={
+                  entry.currentStage
+                    ? {
+                        borderColor: `${entry.currentStage.color}55`,
+                        color: entry.currentStage.color,
+                      }
+                    : undefined
+                }
+              >
+                {entry.currentStage?.label ?? "Not fasting now"}
+              </div>
             </div>
           </div>
           <div className="text-right">

@@ -13,7 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { FriendSearchResult, FriendsPageData, formatCompactDuration, getElapsedMinutes } from "@/lib/fasting";
+import { FriendSearchResult, FriendsPageData, formatCompactDuration, getElapsedMinutes, getStageForMinutes } from "@/lib/fasting";
 import { cn } from "@/lib/utils";
 
 type FriendsViewProps = {
@@ -28,7 +28,7 @@ type FriendsViewProps = {
 const searchSchema = z
   .string()
   .trim()
-  .min(2, "Use at least 2 characters to search by name or email.");
+  .min(3, "Use at least 3 characters to search by name or email.");
 
 function getInitials(value?: string | null) {
   if (!value) {
@@ -192,32 +192,36 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
       <EmptyState
         eyebrow="Friends"
         title="Build your fasting circle."
-        description="Invite friends by email and stay accountable together. FastTrack keeps your circle simple, private, and useful."
+        description="Invite trusted friends, share progress, and stay accountable together. Sign in to save your progress and keep your circle synced."
         actions={
           <>
             <SignInDialog
               buttonClassName="w-full sm:w-auto"
-              buttonLabel="Sign in to save your progress"
+              buttonLabel="Sign in to sync your progress"
               providers={providers}
               size="lg"
             />
-            <Link href="/feed" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full sm:w-auto")}>
-              Preview the feed
+            <Link href="/" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full sm:w-auto")}>
+              Back to dashboard
             </Link>
           </>
         }
         preview={
           <div className="space-y-3">
             <div className="glass-soft rounded-[1.5rem] p-4">
-              <label className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Invite by email</label>
-              <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-                <Input disabled placeholder="friend@example.com" value="" />
-                <Button className="w-full sm:w-auto" disabled size="lg">
-                  Send invite
-                </Button>
+              <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">What you can do</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                {[
+                  "Search by name or email and send private invites.",
+                  "See incoming requests and manage your circle in one place.",
+                ].map((item) => (
+                  <div key={item} className="rounded-[1.2rem] border border-white/8 bg-white/5 px-4 py-4 text-sm text-muted-foreground">
+                    {item}
+                  </div>
+                ))}
               </div>
               <p className="mt-3 text-sm text-muted-foreground">
-                Search results, requests, and accepted friends will appear here once you sign in.
+                Your invites, requests, and accepted friends will appear here once you sign in.
               </p>
             </div>
           </div>
@@ -302,7 +306,7 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
       </Card>
 
       {(friendsData.incomingRequests.length || friendsData.outgoingRequests.length) && (
-        <Card className="section-enter" style={{ animationDelay: "100ms" }}>
+        <Card className="section-enter" style={{ animationDelay: "50ms" }}>
           <CardHeader>
             <div className="flex items-center gap-3">
               <div className="rounded-2xl bg-gold/10 p-2 text-gold shadow-[0_8px_20px_rgba(245,158,11,0.16)]">
@@ -399,15 +403,15 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
         </Card>
       )}
 
-      <Card className="section-enter" style={{ animationDelay: "200ms" }}>
+      <Card className="section-enter" style={{ animationDelay: "100ms" }}>
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="rounded-2xl bg-accent/10 p-2 text-accent shadow-[0_8px_20px_rgba(34,197,94,0.16)]">
               <Users className="size-4" />
             </div>
             <div>
-              <CardTitle>Friends list</CardTitle>
-              <CardDescription>Your accepted FastTrack circle, ordered by current streak.</CardDescription>
+              <CardTitle>Friends leaderboard</CardTitle>
+              <CardDescription>Live fasters rank by who has been in the window the longest.</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -415,24 +419,58 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
           {friendsData.liveSessions.length ? (
             <section className="space-y-3">
               <h2 className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Fasting now</h2>
-              {friendsData.liveSessions.map((session) => {
+              {friendsData.liveSessions.map((session, index) => {
                 const elapsedMinutes = getElapsedMinutes({ startedAt: session.startedAt }, now);
+                const stage = getStageForMinutes(elapsedMinutes);
+                const rank = index + 1;
+                const isLeader = rank === 1;
 
                 return (
                   <div
                     key={session.userId}
-                    className="glass-soft flex items-center justify-between gap-3 rounded-[1.5rem] px-4 py-4"
+                    className={cn(
+                      "glass-soft flex items-center justify-between gap-3 rounded-[1.5rem] px-4 py-4",
+                      session.isCurrentUser ? "border border-primary/25 shadow-[0_16px_40px_rgba(124,92,255,0.12)]" : "",
+                      isLeader ? "bg-gold/5" : ""
+                    )}
                   >
                     <div className="flex items-center gap-3">
+                      <div
+                        className={cn(
+                          "flex size-9 shrink-0 items-center justify-center rounded-full border text-sm font-semibold tabular-nums",
+                          isLeader
+                            ? "border-gold/35 bg-gold/15 text-gold"
+                            : "border-border/70 bg-background/60 text-muted-foreground"
+                        )}
+                        aria-label={`Rank ${rank}`}
+                      >
+                        {rank}
+                      </div>
                       <Avatar size="sm">
                         <AvatarImage src={session.avatarUrl ?? undefined} alt={session.displayName ?? "Friend"} />
                         <AvatarFallback>{getInitials(session.displayName)}</AvatarFallback>
                       </Avatar>
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-medium text-foreground">{session.displayName}</p>
+                          <p className="text-sm font-medium text-foreground">
+                            {session.displayName ?? (session.isCurrentUser ? "You" : "FastTrack friend")}
+                          </p>
                           <span className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-accent">
                             Live now
+                          </span>
+                          {isLeader ? (
+                            <span className="rounded-full border border-gold/25 bg-gold/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-gold">
+                              Leading
+                            </span>
+                          ) : null}
+                          <span
+                            className="rounded-full border bg-white/[0.04] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em]"
+                            style={{
+                              borderColor: `${stage.color}55`,
+                              color: stage.color,
+                            }}
+                          >
+                            {stage.label}
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground">
@@ -441,7 +479,9 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs uppercase tracking-[0.2em] text-accent">In progress</p>
+                      <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
+                        {formatCompactDuration(elapsedMinutes)}
+                      </p>
                       <p className="text-xs text-muted-foreground">planned {formatCompactDuration(session.plannedMinutes)}</p>
                     </div>
                   </div>
@@ -498,11 +538,6 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
               eyebrow="Getting started"
               title="Build your fasting circle."
               description="Search for a friend by name or email, send an invite, and keep your habit grounded in steady accountability."
-              actions={
-                <Link href="/feed" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full sm:w-auto")}>
-                  Preview the feed
-                </Link>
-              }
             />
           )}
         </CardContent>
