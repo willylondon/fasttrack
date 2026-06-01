@@ -1,8 +1,8 @@
 # FastTrack Engineering Handover
 
-Last updated: 2026-05-31
+Last updated: 2026-06-01
 Production URL: https://fasttrack-alpha.vercel.app
-Latest known production deployment: `dpl_3YBXmtvtrbQUXSC8vcH3aht8Wx6T`
+Latest known production deployment: see "Deployment Notes" near the end of this file
 Vercel project: `willardwells-7888s-projects/fasttrack`
 
 ## Purpose
@@ -13,7 +13,7 @@ Do not place secret values in this file.
 
 ## Tech Stack
 
-- Next.js App Router 14.
+- Next.js App Router 16.3.0 canary.
 - React 18.
 - TypeScript.
 - Tailwind CSS and shadcn-style local UI components.
@@ -40,11 +40,17 @@ npm run dev
 Production deployment used in this workspace:
 
 ```bash
-HOME=/private/tmp/fasttrack-vercel-home \
-npm_config_cache=/private/tmp/fasttrack-npm-cache \
-VERCEL_TELEMETRY_DISABLED=1 \
-npx vercel deploy --prod --yes --global-config /private/tmp/fasttrack-vercel-home/.vercel
+vercel deploy --prod
 ```
+
+Important cross-machine workflow:
+
+- Before editing from another computer, run `git pull origin main`.
+- After finishing work, run `npm run typecheck`, `npm run lint`, `npm test`, and `npm run build`.
+- Commit and `git push origin main`.
+- Vercel has been deployed through the CLI/manual path in this project; do not assume GitHub push alone updates production.
+- Run `vercel deploy --prod` and confirm `fasttrack-alpha.vercel.app` aliases to the new deployment.
+- Use `vercel inspect https://fasttrack-alpha.vercel.app` and `vercel api '/v6/deployments?projectId=prj_lEwvlGkFZft60gzWQOoi71RfVFWd&teamId=team_8D56OaSdjSjmpQCgBgXoJ6Tj&limit=1'` to verify the live commit SHA.
 
 Use normal Vercel login/project config if working in a fresh environment.
 
@@ -237,6 +243,9 @@ Performance note:
 - Leaderboard loads current user plus accepted friends.
 - Live status sharing can be disabled from profile.
 - Current user's live session may appear even if their share setting is off; friend visibility respects the setting.
+- Friends leaderboard rows include the current user first, marked with a "You" pill.
+- Friends leaderboard rows show active fasting status when live; otherwise they show latest completed fast duration and stage for the current user and accepted friends.
+- Standalone leaderboard rows also show latest completed stage so inactive users do not disappear from context.
 
 ### Challenges Flow
 
@@ -339,9 +348,9 @@ Lighthouse note:
 - Lighthouse CLI was attempted in this Codex environment, but Chrome connection failed with `Unable to connect to Chrome`.
 - Browser-based mobile functional checks did work.
 
-## Latest Performance Changes
+## Recent Changes To Preserve
 
-Implemented before deployment `dpl_3YBXmtvtrbQUXSC8vcH3aht8Wx6T`:
+Performance changes preserved in current `main`:
 
 - Dynamically import `html-to-image` only inside share-result flow.
 - Extract live ticking timer state into a smaller timer panel.
@@ -359,6 +368,13 @@ Previous local build before performance pass was approximately:
 
 - `/` route: `19.4 kB`
 - First load JS: approximately `181 kB`
+
+Social/history changes preserved in current `main`:
+
+- Friends leaderboard includes the signed-in user plus accepted friends.
+- Friends leaderboard shows active sessions first; inactive rows show latest completed fast duration and fasting stage.
+- Standalone leaderboard rows show latest completed fasting stage for inactive users.
+- Shared tabs component uses `data-orientation` selectors; this prevents the History weekly trend tabs from stretching into the chart area.
 
 ## Security Notes
 
@@ -380,16 +396,19 @@ https://fasttrack-alpha.vercel.app
 
 Latest deployment:
 
-```txt
-dpl_3YBXmtvtrbQUXSC8vcH3aht8Wx6T
-https://fasttrack-dvf9qjjag-willardwells-7888s-projects.vercel.app
+Run these from the repo to confirm the current production deployment and commit:
+
+```bash
+vercel inspect https://fasttrack-alpha.vercel.app
+vercel api '/v6/deployments?projectId=prj_lEwvlGkFZft60gzWQOoi71RfVFWd&teamId=team_8D56OaSdjSjmpQCgBgXoJ6Tj&limit=1'
 ```
 
 Deployment verification performed:
 
-- Vercel deployment status: Ready.
-- Production alias responded `HTTP/2 200`.
-- In-app browser opened live dashboard and detected heading `Today`.
+- Vercel deployment status should be `Ready`.
+- Production alias should point at the newest intended commit SHA.
+- `/friends` should redirect signed-out users to `/?callbackUrl=%2Ffriends`.
+- Authenticated `/history` should show the Weekly trend chart with compact tabs above the chart.
 
 ## Known Risks / Follow-Ups
 
@@ -421,4 +440,3 @@ For engineering context:
 7. `supabase/migrations/20260527120000_fasttrack_schema.sql`
 8. `supabase/migrations/20260527120004_profile_stat_triggers.sql`
 9. `supabase/migrations/20260530162000_avatar_uploads_bucket.sql`
-
