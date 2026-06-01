@@ -515,12 +515,19 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <Avatar size="sm">
-                      <AvatarImage src={friend.avatarUrl ?? undefined} alt={friend.displayName ?? "Friend"} />
+                      <AvatarImage src={friend.avatarUrl ?? undefined} alt={friend.displayName ?? (friend.isCurrentUser ? "You" : "Friend")} />
                       <AvatarFallback>{getInitials(friend.displayName)}</AvatarFallback>
                     </Avatar>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-medium text-foreground">{friend.displayName}</p>
+                        <p className="text-sm font-medium text-foreground">
+                          {friend.displayName ?? (friend.isCurrentUser ? "You" : "FastTrack friend")}
+                        </p>
+                        {friend.isCurrentUser ? (
+                          <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-primary">
+                            You
+                          </span>
+                        ) : null}
                         {!friend.activeSession && completedStage ? (
                           <span
                             className="rounded-full border bg-white/[0.04] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em]"

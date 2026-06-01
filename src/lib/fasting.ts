@@ -108,6 +108,7 @@ export type FriendListItem = {
   longestStreak: number;
   activeSession: FriendLiveSession | null;
   latestCompletedSession: FriendCompletedSession | null;
+  isCurrentUser: boolean;
 };
 
 export type FriendSearchResult = {

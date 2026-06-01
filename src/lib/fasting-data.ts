@@ -365,12 +365,13 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
   const friendIds = (acceptedResult.data ?? []).map((item) =>
     item.sender_id === userId ? item.receiver_id : item.sender_id
   );
-  const lookupIds = Array.from(new Set([...incomingIds, ...outgoingIds, ...friendIds]));
+  const leaderboardIds = Array.from(new Set([userId, ...friendIds]));
+  const lookupIds = Array.from(new Set([...incomingIds, ...outgoingIds, ...leaderboardIds]));
   const profilesById = await getProfilesById(lookupIds, true);
   const [emailLookup, liveSessions, latestCompletedSessions] = await Promise.all([
     getEmailsById([...incomingIds, ...outgoingIds]),
-    getActiveFriendSessions([...friendIds, userId], userId, profilesById),
-    getLatestCompletedFriendSessions(friendIds),
+    getActiveFriendSessions(leaderboardIds, userId, profilesById),
+    getLatestCompletedFriendSessions(leaderboardIds),
   ]);
   const liveSessionLookup = new Map(liveSessions.map((session) => [session.userId, session]));
   const latestCompletedSessionLookup = new Map(latestCompletedSessions.map((session) => [session.userId, session]));
@@ -413,13 +414,15 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
     })
     .filter((request): request is OutgoingFriendRequest => Boolean(request));
 
-  const friends = friendIds
-    .map((friendId) => {
-      const friend = profilesById.get(friendId);
+  const friends = leaderboardIds
+    .map((leaderboardId) => {
+      const friend = profilesById.get(leaderboardId);
 
       if (!friend) {
         return null;
       }
+
+      const isCurrentUser = friend.id === userId;
 
       return {
         id: friend.id,
@@ -429,10 +432,17 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
         longestStreak: friend.longestStreak ?? 0,
         activeSession: liveSessionLookup.get(friend.id) ?? null,
         latestCompletedSession: latestCompletedSessionLookup.get(friend.id) ?? null,
+        isCurrentUser,
       } satisfies FriendListItem;
     })
     .filter((friend): friend is FriendListItem => Boolean(friend))
-    .sort((left, right) => right.currentStreak - left.currentStreak || left.displayName?.localeCompare(right.displayName ?? "") || 0);
+    .sort(
+      (left, right) =>
+        Number(Boolean(right.isCurrentUser)) - Number(Boolean(left.isCurrentUser)) ||
+        right.currentStreak - left.currentStreak ||
+        left.displayName?.localeCompare(right.displayName ?? "") ||
+        0
+    );
 
   return {
     incomingRequests,
