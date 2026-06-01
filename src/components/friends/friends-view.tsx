@@ -13,7 +13,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { FriendSearchResult, FriendsPageData, formatCompactDuration, getElapsedMinutes, getStageForMinutes } from "@/lib/fasting";
+import {
+  FASTING_STAGES,
+  FriendSearchResult,
+  FriendsPageData,
+  formatCompactDuration,
+  getElapsedMinutes,
+  getStageForMinutes,
+} from "@/lib/fasting";
 import { cn } from "@/lib/utils";
 
 type FriendsViewProps = {
@@ -41,6 +48,10 @@ function getInitials(value?: string | null) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
+}
+
+function getCompletedStage(stageReached: number, durationMinutes: number) {
+  return FASTING_STAGES[Math.min(Math.max(stageReached, 0), FASTING_STAGES.length - 1)] ?? getStageForMinutes(durationMinutes);
 }
 
 async function readApiError(response: Response) {
@@ -491,44 +502,73 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
           ) : null}
 
           {friendsData.friends.length ? (
-            friendsData.friends.map((friend) => (
-              <div
-                key={friend.id}
-                className="glass-soft flex items-center justify-between gap-3 rounded-[1.5rem] px-4 py-4"
-              >
-                <div className="flex items-center gap-3">
-                  <Avatar size="sm">
-                    <AvatarImage src={friend.avatarUrl ?? undefined} alt={friend.displayName ?? "Friend"} />
-                    <AvatarFallback>{getInitials(friend.displayName)}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{friend.displayName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {friend.activeSession
-                        ? `Live now • started ${format(new Date(friend.activeSession.startedAt), "p")} • ${formatCompactDuration(getElapsedMinutes({ startedAt: friend.activeSession.startedAt }, now))} in`
-                        : `${friend.longestStreak} day longest streak`}
-                    </p>
+            friendsData.friends.map((friend) => {
+              const latestCompletedSession = friend.latestCompletedSession;
+              const completedStage = latestCompletedSession
+                ? getCompletedStage(latestCompletedSession.stageReached, latestCompletedSession.durationMinutes)
+                : null;
+
+              return (
+                <div
+                  key={friend.id}
+                  className="glass-soft flex items-center justify-between gap-3 rounded-[1.5rem] px-4 py-4"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Avatar size="sm">
+                      <AvatarImage src={friend.avatarUrl ?? undefined} alt={friend.displayName ?? "Friend"} />
+                      <AvatarFallback>{getInitials(friend.displayName)}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium text-foreground">{friend.displayName}</p>
+                        {!friend.activeSession && completedStage ? (
+                          <span
+                            className="rounded-full border bg-white/[0.04] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em]"
+                            style={{
+                              borderColor: `${completedStage.color}55`,
+                              color: completedStage.color,
+                            }}
+                          >
+                            {completedStage.label}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {friend.activeSession
+                          ? `Live now • started ${format(new Date(friend.activeSession.startedAt), "p")} • ${formatCompactDuration(getElapsedMinutes({ startedAt: friend.activeSession.startedAt }, now))} in`
+                          : latestCompletedSession && completedStage
+                            ? `Last fast ended ${formatDistanceToNow(new Date(latestCompletedSession.endedAt), { addSuffix: true })} • ${formatCompactDuration(latestCompletedSession.durationMinutes)} • ${completedStage.label}`
+                            : `${friend.longestStreak} day longest streak`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    {friend.activeSession ? (
+                      <>
+                        <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
+                          {formatCompactDuration(friend.activeSession.plannedMinutes)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">planned window</p>
+                      </>
+                    ) : latestCompletedSession ? (
+                      <>
+                        <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
+                          {formatCompactDuration(latestCompletedSession.durationMinutes)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">last fast</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
+                          {friend.currentStreak}
+                        </p>
+                        <p className="text-xs text-muted-foreground">current streak</p>
+                      </>
+                    )}
                   </div>
                 </div>
-                <div className="text-right">
-                  {friend.activeSession ? (
-                    <>
-                      <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
-                        {formatCompactDuration(friend.activeSession.plannedMinutes)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">planned window</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
-                        {friend.currentStreak}
-                      </p>
-                      <p className="text-xs text-muted-foreground">current streak</p>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))
+              );
+            })
           ) : friendsData.incomingRequests.length || friendsData.outgoingRequests.length ? (
             <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/60 px-5 py-12 text-center text-sm text-muted-foreground">
               Your accepted friends will appear here once requests are confirmed.

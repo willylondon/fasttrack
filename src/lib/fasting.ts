@@ -91,6 +91,15 @@ export type FriendLiveSession = {
   isCurrentUser?: boolean;
 };
 
+export type FriendCompletedSession = {
+  userId: string;
+  startedAt: string;
+  endedAt: string;
+  durationMinutes: number;
+  plannedMinutes: number;
+  stageReached: number;
+};
+
 export type FriendListItem = {
   id: string;
   displayName: string | null;
@@ -98,6 +107,7 @@ export type FriendListItem = {
   currentStreak: number;
   longestStreak: number;
   activeSession: FriendLiveSession | null;
+  latestCompletedSession: FriendCompletedSession | null;
 };
 
 export type FriendSearchResult = {
@@ -172,6 +182,12 @@ export type LeaderboardEntry = {
     label: string;
     color: string;
     elapsedMinutes: number;
+  } | null;
+  lastCompletedStage: {
+    label: string;
+    color: string;
+    elapsedMinutes: number;
+    endedAt: string;
   } | null;
   isCurrentUser: boolean;
 };

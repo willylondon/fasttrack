@@ -29,6 +29,7 @@ import type {
   ChallengeType,
   DashboardData,
   FastCompletionGamification,
+  FriendCompletedSession,
   FastSession,
   FastStatus,
   FeedPageData,
@@ -172,10 +173,11 @@ export async function getLeaderboardData(userId: string | null | undefined): Pro
     supabase.from("profiles").select(PROFILE_COLUMNS).in("id", rankingIds),
     supabase
       .from("fast_sessions")
-      .select("user_id,duration_minutes,duration_planned_minutes,ended_at,status")
+      .select("user_id,started_at,duration_minutes,duration_planned_minutes,ended_at,status,stage_reached")
       .eq("status", "completed")
       .in("user_id", rankingIds)
-      .not("ended_at", "is", null),
+      .not("ended_at", "is", null)
+      .order("ended_at", { ascending: false }),
     supabase
       .from("fast_sessions")
       .select("user_id,started_at,status")
@@ -199,15 +201,16 @@ export async function getLeaderboardData(userId: string | null | undefined): Pro
   const profiles = (profilesResult.data ?? []).map(mapProfile);
   const currentDate = new Date();
   const activeStageMap = buildActiveStageMap(activeSessionsResult.data ?? [], currentDate);
+  const lastCompletedStageMap = buildLastCompletedStageMap(sessionsResult.data ?? []);
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
 
   return {
-    weekly: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], activeStageMap, weekStart, weekEnd, userId),
-    monthly: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], activeStageMap, monthStart, monthEnd, userId),
-    allTime: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], activeStageMap, null, null, userId),
+    weekly: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], activeStageMap, lastCompletedStageMap, weekStart, weekEnd, userId),
+    monthly: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], activeStageMap, lastCompletedStageMap, monthStart, monthEnd, userId),
+    allTime: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], activeStageMap, lastCompletedStageMap, null, null, userId),
   };
 }
 
@@ -364,11 +367,13 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
   );
   const lookupIds = Array.from(new Set([...incomingIds, ...outgoingIds, ...friendIds]));
   const profilesById = await getProfilesById(lookupIds, true);
-  const [emailLookup, liveSessions] = await Promise.all([
+  const [emailLookup, liveSessions, latestCompletedSessions] = await Promise.all([
     getEmailsById([...incomingIds, ...outgoingIds]),
     getActiveFriendSessions([...friendIds, userId], userId, profilesById),
+    getLatestCompletedFriendSessions(friendIds),
   ]);
   const liveSessionLookup = new Map(liveSessions.map((session) => [session.userId, session]));
+  const latestCompletedSessionLookup = new Map(latestCompletedSessions.map((session) => [session.userId, session]));
 
   const incomingRequests = (incomingResult.data ?? [])
     .map((request): FriendRequest | null => {
@@ -423,6 +428,7 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
         currentStreak: friend.currentStreak ?? 0,
         longestStreak: friend.longestStreak ?? 0,
         activeSession: liveSessionLookup.get(friend.id) ?? null,
+        latestCompletedSession: latestCompletedSessionLookup.get(friend.id) ?? null,
       } satisfies FriendListItem;
     })
     .filter((friend): friend is FriendListItem => Boolean(friend))
@@ -1081,6 +1087,47 @@ async function getActiveFriendSessions(
   );
 }
 
+async function getLatestCompletedFriendSessions(userIds: string[]) {
+  const ids = Array.from(new Set(userIds.filter(Boolean)));
+
+  if (!ids.length) {
+    return [] satisfies FriendCompletedSession[];
+  }
+
+  const sessionResult = await createAdminClient()
+    .from("fast_sessions")
+    .select("user_id,started_at,ended_at,duration_minutes,duration_planned_minutes,status,stage_reached")
+    .in("user_id", ids)
+    .eq("status", "completed")
+    .not("ended_at", "is", null)
+    .gt("duration_minutes", 0)
+    .order("ended_at", { ascending: false })
+    .limit(Math.min(Math.max(ids.length * 8, 24), 500));
+
+  if (sessionResult.error) {
+    throw sessionResult.error;
+  }
+
+  const latestByUser = new Map<string, FriendCompletedSession>();
+
+  for (const session of sessionResult.data ?? []) {
+    if (latestByUser.has(session.user_id) || !session.ended_at || !session.duration_minutes) {
+      continue;
+    }
+
+    latestByUser.set(session.user_id, {
+      userId: session.user_id,
+      startedAt: session.started_at,
+      endedAt: session.ended_at,
+      durationMinutes: session.duration_minutes,
+      plannedMinutes: session.duration_planned_minutes,
+      stageReached: Math.max(session.stage_reached ?? 0, getStageIndexForMinutes(session.duration_minutes)),
+    });
+  }
+
+  return Array.from(latestByUser.values());
+}
+
 async function getProfilesById(userIds: string[], includeStreaks = false) {
   const ids = Array.from(new Set(userIds.filter(Boolean)));
   const profileLookup = new Map<
@@ -1257,12 +1304,15 @@ function buildLeaderboardEntries(
   profiles: ProfileSummary[],
   sessions: Array<{
     user_id: string;
+    started_at?: string | null;
     duration_minutes: number | null;
     duration_planned_minutes: number | null;
     ended_at: string | null;
     status: string;
+    stage_reached?: number | null;
   }>,
   activeStageMap: Map<string, LeaderboardEntry["currentStage"]>,
+  lastCompletedStageMap: Map<string, LeaderboardEntry["lastCompletedStage"]>,
   startDate: Date | null,
   endDate: Date | null,
   currentUserId: string | null | undefined
@@ -1307,9 +1357,10 @@ function buildLeaderboardEntries(
       stat: statMap.get(profile.id) ?? 0,
       supportingStat: `${completionMap.get(profile.id) ?? 0} completed`,
       currentStage: activeStageMap.get(profile.id) ?? null,
+      lastCompletedStage: lastCompletedStageMap.get(profile.id) ?? null,
       isCurrentUser: currentUserId === profile.id,
     }))
-    .filter((entry) => entry.stat > 0 || entry.currentStage)
+    .filter((entry) => entry.stat > 0 || entry.currentStage || entry.lastCompletedStage)
     .sort(
       (left, right) =>
         right.stat - left.stat ||
@@ -1320,6 +1371,35 @@ function buildLeaderboardEntries(
       rank: index + 1,
       ...entry,
     }) satisfies LeaderboardEntry);
+}
+
+function buildLastCompletedStageMap(
+  sessions: Array<{
+    user_id: string;
+    duration_minutes: number | null;
+    ended_at: string | null;
+    stage_reached?: number | null;
+  }>
+) {
+  const lastCompletedStageMap = new Map<string, LeaderboardEntry["lastCompletedStage"]>();
+
+  for (const session of sessions) {
+    if (lastCompletedStageMap.has(session.user_id) || !session.ended_at || !session.duration_minutes) {
+      continue;
+    }
+
+    const stageIndex = Math.max(session.stage_reached ?? 0, getStageIndexForMinutes(session.duration_minutes));
+    const stage = FASTING_STAGES[Math.min(stageIndex, FASTING_STAGES.length - 1)] ?? getStageForMinutes(session.duration_minutes);
+
+    lastCompletedStageMap.set(session.user_id, {
+      label: stage.label,
+      color: stage.color,
+      elapsedMinutes: session.duration_minutes,
+      endedAt: session.ended_at,
+    });
+  }
+
+  return lastCompletedStageMap;
 }
 
 function buildActiveStageMap(
