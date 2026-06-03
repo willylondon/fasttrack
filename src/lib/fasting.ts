@@ -70,6 +70,16 @@ export type FeedEvent = {
   actor: SocialProfile | null;
 };
 
+export type EncouragementComment = {
+  id: string;
+  authorId: string;
+  recipientId: string;
+  body: string;
+  context: "leaderboard";
+  createdAt: string;
+  author: SocialProfile | null;
+};
+
 export type FriendRequest = {
   id: string;
   sender: SocialProfile;
@@ -190,6 +200,7 @@ export type LeaderboardEntry = {
     elapsedMinutes: number;
     endedAt: string;
   } | null;
+  encouragementCount: number;
   isCurrentUser: boolean;
 };
 
@@ -197,6 +208,7 @@ export type LeaderboardData = {
   weekly: LeaderboardEntry[];
   monthly: LeaderboardEntry[];
   allTime: LeaderboardEntry[];
+  encouragementsEnabled: boolean;
 };
 
 export type ProfilePageData = {
@@ -243,6 +255,15 @@ type DatabaseFeedEvent = {
   user_id: string;
   event_type: FeedEventType;
   metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
+type DatabaseEncouragementComment = {
+  id: string;
+  author_id: string;
+  recipient_id: string;
+  body: string;
+  context: "leaderboard";
   created_at: string;
 };
 
@@ -383,6 +404,21 @@ export function mapFeedEvent(record: DatabaseFeedEvent, actor: SocialProfile | n
     metadata: record.metadata ?? {},
     createdAt: record.created_at,
     actor,
+  };
+}
+
+export function mapEncouragementComment(
+  record: DatabaseEncouragementComment,
+  author: SocialProfile | null
+): EncouragementComment {
+  return {
+    id: record.id,
+    authorId: record.author_id,
+    recipientId: record.recipient_id,
+    body: record.body,
+    context: record.context,
+    createdAt: record.created_at,
+    author,
   };
 }
 

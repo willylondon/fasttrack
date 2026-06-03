@@ -375,6 +375,7 @@ Social/history changes preserved in current `main`:
 - Friends leaderboard shows active sessions first; inactive rows show latest completed fast duration and fasting stage.
 - Standalone leaderboard rows show latest completed fasting stage for inactive users.
 - Shared tabs component uses `data-orientation` selectors; this prevents the History weekly trend tabs from stretching into the chart area.
+- Leaderboard encouragements are being introduced as the first social-comment feature: `public.encouragement_comments`, `/api/encouragements`, and the standalone leaderboard row dialog. The UI hides controls until the table exists; keep it friend-only and short-form before expanding into challenge/group threads.
 
 ## Security Notes
 

@@ -14,6 +14,7 @@ import {
   calculateLongestStreak,
   getStageForMinutes,
   getStageIndexForMinutes,
+  mapEncouragementComment,
   mapBadge,
   mapFastSession,
   mapFeedEvent,
@@ -28,6 +29,7 @@ import type {
   ChallengesListData,
   ChallengeType,
   DashboardData,
+  EncouragementComment,
   FastCompletionGamification,
   FriendCompletedSession,
   FastSession,
@@ -61,6 +63,8 @@ const PROFILE_COLUMNS =
 const FAST_SESSION_COLUMNS =
   "id,user_id,started_at,ended_at,duration_minutes,duration_planned_minutes,status,notes,created_at,stage_reached";
 const FEED_COLUMNS = "id,user_id,event_type,metadata,created_at";
+const ENCOURAGEMENT_COMMENT_COLUMNS = "id,author_id,recipient_id,body,context,created_at";
+const MAX_ENCOURAGEMENT_BODY_LENGTH = 180;
 
 export async function getCurrentUserId() {
   const session = await auth();
@@ -164,12 +168,13 @@ export async function getLeaderboardData(userId: string | null | undefined): Pro
       weekly: [],
       monthly: [],
       allTime: [],
+      encouragementsEnabled: false,
     };
   }
 
   const rankingIds = [userId, ...(await getAcceptedFriendIds(userId))];
   const supabase = createAdminClient();
-  const [profilesResult, sessionsResult, activeSessionsResult] = await Promise.all([
+  const [profilesResult, sessionsResult, activeSessionsResult, encouragementSummary] = await Promise.all([
     supabase.from("profiles").select(PROFILE_COLUMNS).in("id", rankingIds),
     supabase
       .from("fast_sessions")
@@ -184,6 +189,7 @@ export async function getLeaderboardData(userId: string | null | undefined): Pro
       .eq("status", "active")
       .in("user_id", rankingIds)
       .order("started_at", { ascending: false }),
+    getEncouragementSummary(rankingIds),
   ]);
 
   if (profilesResult.error) {
@@ -208,9 +214,37 @@ export async function getLeaderboardData(userId: string | null | undefined): Pro
   const monthEnd = endOfMonth(currentDate);
 
   return {
-    weekly: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], activeStageMap, lastCompletedStageMap, weekStart, weekEnd, userId),
-    monthly: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], activeStageMap, lastCompletedStageMap, monthStart, monthEnd, userId),
-    allTime: buildLeaderboardEntries(profiles, sessionsResult.data ?? [], activeStageMap, lastCompletedStageMap, null, null, userId),
+    encouragementsEnabled: encouragementSummary.available,
+    weekly: buildLeaderboardEntries(
+      profiles,
+      sessionsResult.data ?? [],
+      activeStageMap,
+      lastCompletedStageMap,
+      encouragementSummary.counts,
+      weekStart,
+      weekEnd,
+      userId
+    ),
+    monthly: buildLeaderboardEntries(
+      profiles,
+      sessionsResult.data ?? [],
+      activeStageMap,
+      lastCompletedStageMap,
+      encouragementSummary.counts,
+      monthStart,
+      monthEnd,
+      userId
+    ),
+    allTime: buildLeaderboardEntries(
+      profiles,
+      sessionsResult.data ?? [],
+      activeStageMap,
+      lastCompletedStageMap,
+      encouragementSummary.counts,
+      null,
+      null,
+      userId
+    ),
   };
 }
 
@@ -987,6 +1021,80 @@ export async function searchProfiles(userId: string, query: string) {
     });
 }
 
+export async function getEncouragementComments(
+  userId: string,
+  recipientId: string,
+  limit = 25
+): Promise<EncouragementComment[]> {
+  const canView = await canViewProfileEncouragement(userId, recipientId);
+
+  if (!canView) {
+    throw new Error("Encouragements not found.");
+  }
+
+  const commentResult = await createAdminClient()
+    .from("encouragement_comments")
+    .select(ENCOURAGEMENT_COMMENT_COLUMNS)
+    .eq("recipient_id", recipientId)
+    .eq("context", "leaderboard")
+    .order("created_at", { ascending: false })
+    .limit(Math.min(Math.max(limit, 1), 50));
+
+  if (commentResult.error) {
+    throw commentResult.error;
+  }
+
+  const authorIds = (commentResult.data ?? []).map((comment) => comment.author_id);
+  const authorLookup = await getProfilesById(authorIds);
+
+  return (commentResult.data ?? []).map((comment) =>
+    mapEncouragementComment(comment, authorLookup.get(comment.author_id) ?? null)
+  );
+}
+
+export async function createEncouragementComment(
+  userId: string,
+  input: {
+    recipientId: string;
+    body: string;
+  }
+) {
+  const normalizedBody = normalizeEncouragementBody(input.body);
+
+  if (!normalizedBody) {
+    throw new Error("Write a short encouragement first.");
+  }
+
+  if (normalizedBody.length > MAX_ENCOURAGEMENT_BODY_LENGTH) {
+    throw new Error(`Encouragements must be ${MAX_ENCOURAGEMENT_BODY_LENGTH} characters or fewer.`);
+  }
+
+  const canSend = await canSendProfileEncouragement(userId, input.recipientId);
+
+  if (!canSend) {
+    throw new Error("You can only encourage accepted friends.");
+  }
+
+  const insertResult = await createAdminClient()
+    .from("encouragement_comments")
+    .insert({
+      author_id: userId,
+      recipient_id: input.recipientId,
+      body: normalizedBody,
+      context: "leaderboard",
+    })
+    .select(ENCOURAGEMENT_COMMENT_COLUMNS)
+    .single();
+
+  if (insertResult.error) {
+    throw insertResult.error;
+  }
+
+  const author = await getProfileById(userId);
+
+  return mapEncouragementComment(insertResult.data, author);
+}
+
 async function getHighestMilestoneStage(userId: string, session: FastSession | null) {
   if (!session) {
     return 0;
@@ -1206,6 +1314,72 @@ async function getAcceptedFriendIds(userId: string) {
   );
 }
 
+async function canViewProfileEncouragement(userId: string, recipientId: string) {
+  if (userId === recipientId) {
+    return true;
+  }
+
+  return areAcceptedFriends(userId, recipientId);
+}
+
+async function canSendProfileEncouragement(userId: string, recipientId: string) {
+  if (userId === recipientId) {
+    return false;
+  }
+
+  return areAcceptedFriends(userId, recipientId);
+}
+
+async function areAcceptedFriends(userId: string, otherUserId: string) {
+  const friendshipResult = await createAdminClient()
+    .from("friendships")
+    .select("id")
+    .eq("status", "accepted")
+    .or(
+      `and(sender_id.eq.${userId},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${userId})`
+    )
+    .limit(1)
+    .maybeSingle();
+
+  if (friendshipResult.error) {
+    throw friendshipResult.error;
+  }
+
+  return Boolean(friendshipResult.data);
+}
+
+async function getEncouragementSummary(userIds: string[]) {
+  const ids = Array.from(new Set(userIds.filter(Boolean)));
+  const countMap = new Map<string, number>();
+
+  if (!ids.length) {
+    return { available: true, counts: countMap };
+  }
+
+  const commentResult = await createAdminClient()
+    .from("encouragement_comments")
+    .select("recipient_id")
+    .in("recipient_id", ids)
+    .eq("context", "leaderboard")
+    .limit(1000);
+
+  if (commentResult.error) {
+    const message = String(commentResult.error.message ?? "");
+
+    if (message.includes("encouragement_comments")) {
+      return { available: false, counts: countMap };
+    }
+
+    throw commentResult.error;
+  }
+
+  for (const comment of commentResult.data ?? []) {
+    countMap.set(comment.recipient_id, (countMap.get(comment.recipient_id) ?? 0) + 1);
+  }
+
+  return { available: true, counts: countMap };
+}
+
 async function getEmailsById(userIds: string[]) {
   const ids = Array.from(new Set(userIds.filter(Boolean)));
   const emailLookup = new Map<string, string | null>();
@@ -1276,6 +1450,10 @@ function normalizeOptionalText(value?: string | null) {
   return trimmed ? trimmed : null;
 }
 
+function normalizeEncouragementBody(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
 export { buildFeedEventCopy };
 
 async function getComputedProfileFields(userId: string) {
@@ -1323,6 +1501,7 @@ function buildLeaderboardEntries(
   }>,
   activeStageMap: Map<string, LeaderboardEntry["currentStage"]>,
   lastCompletedStageMap: Map<string, LeaderboardEntry["lastCompletedStage"]>,
+  encouragementCounts: Map<string, number>,
   startDate: Date | null,
   endDate: Date | null,
   currentUserId: string | null | undefined
@@ -1368,6 +1547,7 @@ function buildLeaderboardEntries(
       supportingStat: `${completionMap.get(profile.id) ?? 0} completed`,
       currentStage: activeStageMap.get(profile.id) ?? null,
       lastCompletedStage: lastCompletedStageMap.get(profile.id) ?? null,
+      encouragementCount: encouragementCounts.get(profile.id) ?? 0,
       isCurrentUser: currentUserId === profile.id,
     }))
     .filter((entry) => entry.stat > 0 || entry.currentStage || entry.lastCompletedStage)
