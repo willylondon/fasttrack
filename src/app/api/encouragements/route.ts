@@ -9,6 +9,8 @@ const encouragementSchema = z.object({
   body: z.string().trim().min(1, "Write a short encouragement first.").max(180, "Keep encouragements to 180 characters or fewer."),
 });
 
+export const runtime = "nodejs";
+
 export async function GET(request: Request) {
   const userId = await getCurrentUserId();
 

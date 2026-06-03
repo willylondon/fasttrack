@@ -68,6 +68,9 @@ AUTH_GOOGLE_ID
 AUTH_GOOGLE_SECRET
 AUTH_GITHUB_ID
 AUTH_GITHUB_SECRET
+NEXT_PUBLIC_VAPID_PUBLIC_KEY
+VAPID_PRIVATE_KEY
+VAPID_SUBJECT
 ```
 
 Optional:
@@ -376,6 +379,7 @@ Social/history changes preserved in current `main`:
 - Standalone leaderboard rows show latest completed fasting stage for inactive users.
 - Shared tabs component uses `data-orientation` selectors; this prevents the History weekly trend tabs from stretching into the chart area.
 - Leaderboard encouragements are the first social-comment feature: `public.encouragement_comments`, `/api/encouragements`, the standalone leaderboard row dialog, and the Friends page leaderboard row dialog. The UI hides controls until the table exists; keep it friend-only and short-form before expanding into challenge/group threads.
+- Encouragements trigger Web Push notifications for recipients who enabled notifications in Profile. Required Vercel env vars are `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT`; notification failure must not block saving the encouragement.
 
 ## Security Notes
 

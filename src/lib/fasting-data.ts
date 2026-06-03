@@ -55,6 +55,7 @@ import {
 } from "@/lib/challenges";
 import { checkBadges } from "@/lib/gamification/badges";
 import { xpForFasting } from "@/lib/gamification/xp";
+import { notifyEncouragementRecipient } from "@/lib/notifications";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { endOfMonth, endOfWeek, startOfMonth, startOfWeek } from "date-fns";
 
@@ -1095,8 +1096,15 @@ export async function createEncouragementComment(
   }
 
   const author = await getProfileById(userId);
+  const comment = mapEncouragementComment(insertResult.data, author);
 
-  return mapEncouragementComment(insertResult.data, author);
+  try {
+    await notifyEncouragementRecipient(input.recipientId, author);
+  } catch (error) {
+    console.error("Encouragement notification failed", error);
+  }
+
+  return comment;
 }
 
 async function getHighestMilestoneStage(userId: string, session: FastSession | null) {
