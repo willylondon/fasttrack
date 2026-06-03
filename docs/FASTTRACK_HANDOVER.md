@@ -1,6 +1,6 @@
 # FastTrack Engineering Handover
 
-Last updated: 2026-06-01
+Last updated: 2026-06-03
 Production URL: https://fasttrack-alpha.vercel.app
 Latest known production deployment: see "Deployment Notes" near the end of this file
 Vercel project: `willardwells-7888s-projects/fasttrack`
@@ -139,6 +139,8 @@ Important API routes:
 - `src/app/api/challenges/route.ts`
 - `src/app/api/challenges/[id]/route.ts`
 - `src/app/api/challenges/[id]/join/route.ts`
+- `src/app/api/checkins/route.ts`
+- `src/app/api/notifications/[notificationId]/route.ts`
 - `src/app/api/notifications/subscribe/route.ts`
 
 Core libraries:
@@ -183,6 +185,8 @@ Main tables:
 - `public.challenges` - public challenge records.
 - `public.challenge_participants` - challenge participants and progress.
 - `public.push_subscriptions` - web push subscriptions.
+- `public.app_notifications` - durable in-app inbox rows for encouragements and circle challenge invites.
+- `public.fasting_checkins` - per-completed-fast energy/mood/hunger/sleep ratings and optional note.
 - Supabase storage bucket `avatars` - public avatar uploads.
 
 Important migration notes:
@@ -193,6 +197,7 @@ Important migration notes:
 - Profile fasting stats are maintained by database triggers, with server recompute fallback in `refreshProfileStats`.
 - `stage_reached` is stored on fast sessions to prevent repeated milestone events.
 - Avatar uploads require the `avatars` storage bucket migration.
+- Latest production migration after encouragement comments is `20260603201113 inbox_checkins_circle_challenges`.
 
 ## Main Data Flow
 
@@ -256,6 +261,17 @@ Performance note:
 - Detail uses `getChallengeDetail()`.
 - Create/join/leave are API-backed.
 - Progress is computed from completed sessions within challenge date range.
+- Create supports `circle` and `public` visibility.
+- Circle challenges set `is_public = false`, auto-enroll the creator plus accepted friends, and create inbox notifications for invited friends.
+- Private challenge detail rejects users who are neither creator nor participant.
+
+### Inbox And Check-In Flow
+
+- Profile loads recent `app_notifications` through `getProfilePageData()`.
+- Encouragement saves create both the `encouragement_comments` row and a durable inbox notification; Web Push still remains best-effort.
+- Profile inbox rows can be marked read through `PATCH /api/notifications/[notificationId]`.
+- History loads `fasting_checkins`, renders daily check-in controls for recent completed fasts, and derives simple pattern insight cards.
+- Check-ins upsert through `POST /api/checkins` and are keyed by `(user_id, session_id)`.
 
 ## Fasting Stages
 
@@ -380,6 +396,9 @@ Social/history changes preserved in current `main`:
 - Shared tabs component uses `data-orientation` selectors; this prevents the History weekly trend tabs from stretching into the chart area.
 - Leaderboard encouragements are the first social-comment feature: `public.encouragement_comments`, `/api/encouragements`, the standalone leaderboard row dialog, and the Friends page leaderboard row dialog. The UI hides controls until the table exists; keep it friend-only and short-form before expanding into challenge/group threads.
 - Encouragements trigger Web Push notifications for recipients who enabled notifications in Profile. Required Vercel env vars are `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT`; notification failure must not block saving the encouragement.
+- Profile now has a durable in-app Inbox for encouragements and circle challenge invites.
+- History now has per-fast check-ins plus simple pattern insights for energy, mood, hunger, and strong-energy sessions.
+- Challenges now default to Circle visibility, which invites accepted friends automatically; Public challenges remain available.
 
 ## Security Notes
 

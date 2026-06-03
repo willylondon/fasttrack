@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, CalendarClock, Flame, Plus, Sparkles, Trophy, Users } from "lucide-react";
+import { ArrowRight, Flame, Globe2, Lock, Plus, Sparkles, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -36,7 +36,10 @@ const createSchema = z.object({
   challengeType: z.enum(["streak_days", "total_hours", "daily_fast", "milestone_reach"]),
   targetValue: z.coerce.number().int().min(1, "Target must be at least 1."),
   durationDays: z.coerce.number().int().min(1).max(90),
+  visibility: z.enum(["circle", "public"]),
 });
+
+type ChallengeVisibility = z.infer<typeof createSchema>["visibility"];
 
 const TYPE_HELP: Record<ChallengeType, string> = {
   streak_days: "Maintain a consecutive-day fasting streak",
@@ -139,9 +142,14 @@ function ChallengeCard({ challenge }: { challenge: Challenge }) {
               <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{challenge.description}</p>
             )}
           </div>
-          <Badge variant="outline" className="shrink-0 border-primary/30 text-primary">
-            {CHALLENGE_TYPE_LABELS[challenge.challengeType]}
-          </Badge>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <Badge variant="outline" className="border-primary/30 text-primary">
+              {CHALLENGE_TYPE_LABELS[challenge.challengeType]}
+            </Badge>
+            <span className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+              {challenge.isPublic ? "Public" : "Circle"}
+            </span>
+          </div>
         </div>
         <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
           <div className="premium-chip rounded-2xl px-3 py-2">
@@ -194,6 +202,7 @@ function CreateChallengeDialog({
   const [challengeType, setChallengeType] = useState<ChallengeType>(template?.challengeType ?? "streak_days");
   const [targetValue, setTargetValue] = useState(template?.targetValue ?? "");
   const [durationDays, setDurationDays] = useState(template?.durationDays ?? "7");
+  const [visibility, setVisibility] = useState<ChallengeVisibility>("circle");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -206,6 +215,7 @@ function CreateChallengeDialog({
       challengeType,
       targetValue: targetValue || "0",
       durationDays,
+      visibility,
     });
 
     if (!parsed.success) {
@@ -240,6 +250,7 @@ function CreateChallengeDialog({
       setTargetValue("");
       setChallengeType("streak_days");
       setDurationDays("7");
+      setVisibility("circle");
       onCreated();
       router.push(`/challenges/${challengeId}`);
       router.refresh();
@@ -260,10 +271,52 @@ function CreateChallengeDialog({
         <DialogHeader>
           <DialogTitle>New Challenge</DialogTitle>
           <DialogDescription>
-            Set a goal, pick a duration, and invite your circle.
+            Set a goal, pick a duration, and choose who sees it.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-2">
+          <div className="grid gap-2">
+            <label className="text-xs font-medium text-foreground">Visibility</label>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                {
+                  value: "circle" as const,
+                  label: "Circle",
+                  icon: Lock,
+                  copy: "Accepted friends join automatically.",
+                },
+                {
+                  value: "public" as const,
+                  label: "Public",
+                  icon: Globe2,
+                  copy: "Available for others to join.",
+                },
+              ].map((option) => {
+                const Icon = option.icon;
+                const active = visibility === option.value;
+
+                return (
+                  <button
+                    key={option.value}
+                    className={cn(
+                      "rounded-2xl border px-3 py-3 text-left transition-colors",
+                      active
+                        ? "border-primary/50 bg-primary/15 text-foreground"
+                        : "border-white/[0.08] bg-white/[0.04] text-muted-foreground hover:bg-white/[0.07]"
+                    )}
+                    onClick={() => setVisibility(option.value)}
+                    type="button"
+                  >
+                    <span className="flex items-center gap-2 text-sm font-medium">
+                      <Icon className="size-4" />
+                      {option.label}
+                    </span>
+                    <span className="mt-1 block text-[11px] leading-4">{option.copy}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <div className="grid gap-2">
             <label className="text-xs font-medium text-foreground">Title</label>
             <Input

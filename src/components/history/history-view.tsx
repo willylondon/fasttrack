@@ -4,14 +4,16 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { format, subDays } from "date-fns";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { toast } from "sonner";
 
 import { SignInDialog } from "@/components/auth/sign-in-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { HistoryData, buildHistorySeries, calculateStats, formatCompactDuration } from "@/lib/fasting";
+import { Textarea } from "@/components/ui/textarea";
+import { DailyCheckIn, HistoryData, buildHistorySeries, calculateStats, formatCompactDuration } from "@/lib/fasting";
 import { buildSignedOutHistoryData, readLocalDashboardData } from "@/lib/local-dashboard";
 import { cn } from "@/lib/utils";
 
@@ -24,21 +26,113 @@ type HistoryViewProps = {
   signedIn: boolean;
 };
 
+type CheckInDraft = {
+  energy: number;
+  mood: number;
+  hunger: number;
+  sleepQuality: number;
+  note: string;
+};
+
+const DEFAULT_CHECK_IN_DRAFT: CheckInDraft = {
+  energy: 3,
+  mood: 3,
+  hunger: 3,
+  sleepQuality: 3,
+  note: "",
+};
+
+const CHECK_IN_FIELDS = [
+  { key: "energy", label: "Energy" },
+  { key: "mood", label: "Mood" },
+  { key: "hunger", label: "Hunger" },
+  { key: "sleepQuality", label: "Sleep" },
+] satisfies Array<{ key: keyof Omit<CheckInDraft, "note">; label: string }>;
+
+function buildDrafts(checkIns: DailyCheckIn[]) {
+  return Object.fromEntries(
+    checkIns.map((checkIn) => [
+      checkIn.sessionId,
+      {
+        energy: checkIn.energy,
+        mood: checkIn.mood,
+        hunger: checkIn.hunger,
+        sleepQuality: checkIn.sleepQuality,
+        note: checkIn.note ?? "",
+      },
+    ])
+  ) as Record<string, CheckInDraft>;
+}
+
+function buildLocalCheckInInsights(checkIns: DailyCheckIn[]) {
+  if (!checkIns.length) {
+    return [];
+  }
+
+  const average = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1);
+  const averageEnergy = average(checkIns.map((checkIn) => checkIn.energy));
+  const averageMood = average(checkIns.map((checkIn) => checkIn.mood));
+  const averageHunger = average(checkIns.map((checkIn) => checkIn.hunger));
+  const goodEnergyCount = checkIns.filter((checkIn) => checkIn.energy >= 4).length;
+
+  return [
+    {
+      label: "Energy",
+      value: averageEnergy.toFixed(1),
+      detail:
+        averageEnergy >= 4
+          ? "Your recent fasts are landing with strong energy."
+          : "Energy is mixed; consider gentler targets on lower-energy days.",
+    },
+    {
+      label: "Mood",
+      value: averageMood.toFixed(1),
+      detail:
+        averageMood >= 4
+          ? "Mood looks steady after recent sessions."
+          : "Mood has room to improve; watch sleep, stress, and timing.",
+    },
+    {
+      label: "Hunger",
+      value: averageHunger.toFixed(1),
+      detail:
+        averageHunger >= 4
+          ? "Hunger has been high; consistency may improve with less aggressive windows."
+          : "Hunger has stayed manageable across recent check-ins.",
+    },
+    {
+      label: "Best signal",
+      value: `${goodEnergyCount}/${checkIns.length}`,
+      detail: "Check-ins with strong energy help identify your most repeatable fasting rhythm.",
+    },
+  ];
+}
+
 export function HistoryView({ initialData, providers, signedIn }: HistoryViewProps) {
   const [history, setHistory] = useState(initialData);
+  const [checkInDrafts, setCheckInDrafts] = useState<Record<string, CheckInDraft>>(() =>
+    buildDrafts(initialData.checkIns)
+  );
+  const [savingCheckInId, setSavingCheckInId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!signedIn) {
       setHistory(buildSignedOutHistoryData(readLocalDashboardData()));
+      setCheckInDrafts({});
       return;
     }
 
     setHistory(initialData);
+    setCheckInDrafts(buildDrafts(initialData.checkIns));
   }, [initialData, signedIn]);
 
   const stats = calculateStats(history.sessions, history.profile);
   const chartData = buildHistorySeries(history.sessions);
   const completedSessions = history.sessions.filter((session) => session.status === "completed");
+  const checkInMap = new Map(history.checkIns.map((checkIn) => [checkIn.sessionId, checkIn]));
+  const checkInInsights = history.checkInInsights.length
+    ? history.checkInInsights
+    : buildLocalCheckInInsights(history.checkIns);
   const resolvedSessions = history.sessions.filter((session) => session.status !== "active");
   const completionRate = resolvedSessions.length
     ? Math.round((completedSessions.length / resolvedSessions.length) * 100)
@@ -53,6 +147,64 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
         100
     )
   );
+
+  function updateCheckInDraft(sessionId: string, patch: Partial<CheckInDraft>) {
+    setCheckInDrafts((current) => ({
+      ...current,
+      [sessionId]: {
+        ...(current[sessionId] ?? DEFAULT_CHECK_IN_DRAFT),
+        ...patch,
+      },
+    }));
+  }
+
+  async function saveCheckIn(sessionId: string) {
+    const draft = checkInDrafts[sessionId] ?? DEFAULT_CHECK_IN_DRAFT;
+    setSavingCheckInId(sessionId);
+
+    try {
+      const response = await fetch("/api/checkins", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sessionId,
+          energy: draft.energy,
+          mood: draft.mood,
+          hunger: draft.hunger,
+          sleepQuality: draft.sleepQuality,
+          note: draft.note.trim() || null,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        checkIn?: DailyCheckIn;
+        message?: string;
+      } | null;
+
+      if (!response.ok || !payload?.checkIn) {
+        throw new Error(payload?.message ?? "Unable to save check-in.");
+      }
+
+      setHistory((current) => {
+        const nextCheckIns = [
+          payload.checkIn!,
+          ...current.checkIns.filter((checkIn) => checkIn.sessionId !== sessionId),
+        ];
+
+        return {
+          ...current,
+          checkIns: nextCheckIns,
+          checkInInsights: buildLocalCheckInInsights(nextCheckIns),
+        };
+      });
+      toast.success("Check-in saved.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to save check-in.");
+    } finally {
+      setSavingCheckInId(null);
+    }
+  }
 
   if (!signedIn && !resolvedSessions.length) {
     return (
@@ -203,7 +355,105 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
         </CardContent>
       </Card>
 
-      <Card className="section-enter" style={{ animationDelay: "600ms" }}>
+      {signedIn ? (
+        <Card className="section-enter" style={{ animationDelay: "600ms" }}>
+          <CardHeader>
+            <CardTitle>Daily check-in</CardTitle>
+            <CardDescription>Track how each completed fast actually felt.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {checkInInsights.length ? (
+              <div className="grid gap-3 sm:grid-cols-4">
+                {checkInInsights.map((insight) => (
+                  <div key={insight.label} className="premium-chip rounded-[1.25rem] px-4 py-4">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{insight.label}</p>
+                    <p className="mt-2 font-[family:var(--font-heading)] text-2xl font-semibold text-foreground">
+                      {insight.value}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{insight.detail}</p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {completedSessions.slice(0, 5).length ? (
+              completedSessions.slice(0, 5).map((session) => {
+                const savedCheckIn = checkInMap.get(session.id);
+                const draft = checkInDrafts[session.id] ?? DEFAULT_CHECK_IN_DRAFT;
+
+                return (
+                  <div key={session.id} className="glass-soft rounded-[1.5rem] px-4 py-4">
+                    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-medium text-foreground">
+                          {session.endedAt ? format(new Date(session.endedAt), "EEE, MMM d") : "Completed fast"}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {formatCompactDuration(session.durationMinutes ?? 0)}
+                          {savedCheckIn ? " checked in" : " awaiting check-in"}
+                        </p>
+                      </div>
+                      <Button
+                        className="rounded-2xl"
+                        disabled={savingCheckInId === session.id}
+                        onClick={() => void saveCheckIn(session.id)}
+                        size="sm"
+                      >
+                        {savingCheckInId === session.id ? "Saving..." : savedCheckIn ? "Update" : "Save"}
+                      </Button>
+                    </div>
+                    <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_1fr_1.25fr]">
+                      {CHECK_IN_FIELDS.map((field) => (
+                        <div key={field.key} className="space-y-2">
+                          <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                            {field.label}
+                          </p>
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4, 5].map((value) => (
+                              <button
+                                key={value}
+                                aria-label={`${field.label} ${value}`}
+                                className={cn(
+                                  "grid size-8 place-items-center rounded-xl border text-xs font-medium transition-colors",
+                                  draft[field.key] === value
+                                    ? "border-primary/60 bg-primary/20 text-foreground"
+                                    : "border-white/[0.08] bg-white/[0.04] text-muted-foreground hover:bg-white/[0.08]"
+                                )}
+                                onClick={() => updateCheckInDraft(session.id, { [field.key]: value })}
+                                type="button"
+                              >
+                                {value}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      <label className="space-y-2">
+                        <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                          Note
+                        </span>
+                        <Textarea
+                          maxLength={240}
+                          onChange={(event) => updateCheckInDraft(session.id, { note: event.target.value })}
+                          placeholder="Anything you noticed?"
+                          rows={2}
+                          value={draft.note}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/60 px-5 py-12 text-center text-sm text-muted-foreground">
+                Complete a fast and the check-in will appear here.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Card className="section-enter" style={{ animationDelay: "700ms" }}>
         <CardHeader>
           <CardTitle>Recent fasts</CardTitle>
           <CardDescription>Your latest completed sessions, newest first.</CardDescription>

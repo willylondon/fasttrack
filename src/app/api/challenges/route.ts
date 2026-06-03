@@ -10,6 +10,7 @@ const createChallengeSchema = z.object({
   challengeType: z.enum(["streak_days", "total_hours", "daily_fast", "milestone_reach"]),
   targetValue: z.number().int().min(1, "Target must be at least 1."),
   durationDays: z.number().int().min(1).max(90),
+  visibility: z.enum(["circle", "public"]).default("circle"),
 });
 
 export async function GET() {

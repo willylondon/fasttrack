@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
-import { Bell, BellOff, Image as ImageIcon, RotateCcw, Save, Upload, UserRound, Eye, EyeOff, Trophy } from "lucide-react";
+import { Bell, BellOff, Check, Image as ImageIcon, RotateCcw, Save, Upload, UserRound, Eye, EyeOff, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 import { SignInDialog } from "@/components/auth/sign-in-dialog";
@@ -70,6 +70,7 @@ async function readNotificationPayload(response: Response) {
 
 export function ProfileView({ initialData, providers, signedIn }: ProfileViewProps) {
   const [profile, setProfile] = useState(initialData.profile);
+  const [notifications, setNotifications] = useState(initialData.notifications);
   const [notificationsEnabled, setNotificationsEnabled] = useState(initialData.notificationsEnabled);
   const [isTogglingNotifications, setIsTogglingNotifications] = useState(false);
   const [liveStatusSharingEnabled, setLiveStatusSharingEnabled] = useState(initialData.liveStatusSharingEnabled);
@@ -134,6 +135,7 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
   const identityChanged =
     normalizedDisplayName !== (currentProfile.displayName ?? "") ||
     normalizedAvatarUrl !== (currentProfile.avatarUrl ?? "");
+  const unreadCount = notifications.filter((notification) => !notification.readAt).length;
 
   async function toggleNotifications() {
     setIsTogglingNotifications(true);
@@ -334,6 +336,39 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
     setAvatarUrlDraft(currentProfile.avatarUrl ?? "");
   }
 
+  async function markNotificationRead(notificationId: string) {
+    const currentNotification = notifications.find((notification) => notification.id === notificationId);
+
+    if (!currentNotification || currentNotification.readAt) {
+      return;
+    }
+
+    const readAt = new Date().toISOString();
+    setNotifications((current) =>
+      current.map((notification) =>
+        notification.id === notificationId ? { ...notification, readAt } : notification
+      )
+    );
+
+    try {
+      const response = await fetch(`/api/notifications/${notificationId}`, {
+        method: "PATCH",
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(payload?.message ?? "Unable to mark notification read.");
+      }
+    } catch (error) {
+      setNotifications((current) =>
+        current.map((notification) =>
+          notification.id === notificationId ? { ...notification, readAt: currentNotification.readAt } : notification
+        )
+      );
+      toast.error(error instanceof Error ? error.message : "Unable to update notification.");
+    }
+  }
+
   return (
     <div className="grid gap-6">
       <Card className="section-enter" style={{ animationDelay: "0ms" }}>
@@ -505,6 +540,70 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
 
       <Card className="section-enter" style={{ animationDelay: "100ms" }}>
         <CardHeader>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle>Inbox</CardTitle>
+              <CardDescription>Encouragements and circle challenge updates stay here.</CardDescription>
+            </div>
+            {unreadCount ? (
+              <Badge variant="outline" className="border-primary/40 text-primary">
+                {unreadCount} new
+              </Badge>
+            ) : null}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {notifications.length ? (
+            notifications.map((notification) => (
+              <div
+                key={notification.id}
+                className={cn(
+                  "glass-soft flex flex-col gap-3 rounded-[1.5rem] px-4 py-4 sm:flex-row sm:items-center sm:justify-between",
+                  !notification.readAt && "border-primary/25 bg-primary/[0.08]"
+                )}
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="truncate text-sm font-semibold text-foreground">{notification.title}</p>
+                    {!notification.readAt ? <span className="size-2 rounded-full bg-primary" /> : null}
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{notification.body}</p>
+                  <p className="mt-1 text-xs text-muted-foreground/80">
+                    {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Link
+                    className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-2xl")}
+                    href={notification.href}
+                    onClick={() => void markNotificationRead(notification.id)}
+                  >
+                    Open
+                  </Link>
+                  {!notification.readAt ? (
+                    <Button
+                      className="rounded-2xl"
+                      onClick={() => void markNotificationRead(notification.id)}
+                      size="sm"
+                      variant="secondary"
+                    >
+                      <Check className="mr-1.5 size-3.5" />
+                      Read
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/60 px-5 py-12 text-center text-sm text-muted-foreground">
+              Encouragements and circle invites will appear here.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="section-enter" style={{ animationDelay: "200ms" }}>
+        <CardHeader>
           <CardTitle>Badge cabinet</CardTitle>
           <CardDescription>Badges focus on steady habits, streaks, and showing up for your plan.</CardDescription>
         </CardHeader>
@@ -538,7 +637,7 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
         </CardContent>
       </Card>
 
-      <Card className="section-enter" style={{ animationDelay: "200ms" }}>
+      <Card className="section-enter" style={{ animationDelay: "300ms" }}>
         <CardHeader>
           <CardTitle>Recent activity</CardTitle>
           <CardDescription>Your latest milestones, badges, and account progress.</CardDescription>

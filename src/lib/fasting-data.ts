@@ -14,6 +14,8 @@ import {
   calculateLongestStreak,
   getStageForMinutes,
   getStageIndexForMinutes,
+  mapAppNotification,
+  mapDailyCheckIn,
   mapEncouragementComment,
   mapBadge,
   mapFastSession,
@@ -23,12 +25,14 @@ import {
 } from "@/lib/fasting";
 import type {
   BadgeDefinition,
+  AppNotification,
   Challenge,
   ChallengeDetail,
   ChallengeParticipant,
   ChallengesListData,
   ChallengeType,
   DashboardData,
+  DailyCheckIn,
   EncouragementComment,
   FastCompletionGamification,
   FriendCompletedSession,
@@ -65,6 +69,8 @@ const FAST_SESSION_COLUMNS =
   "id,user_id,started_at,ended_at,duration_minutes,duration_planned_minutes,status,notes,created_at,stage_reached";
 const FEED_COLUMNS = "id,user_id,event_type,metadata,created_at";
 const ENCOURAGEMENT_COMMENT_COLUMNS = "id,author_id,recipient_id,body,context,created_at";
+const APP_NOTIFICATION_COLUMNS = "id,user_id,actor_id,notification_type,title,body,href,read_at,created_at";
+const DAILY_CHECKIN_COLUMNS = "id,user_id,session_id,energy,mood,hunger,sleep_quality,note,created_at";
 const MAX_ENCOURAGEMENT_BODY_LENGTH = 180;
 
 export async function getCurrentUserId() {
@@ -132,7 +138,7 @@ export async function getHistoryData(userId: string | null | undefined): Promise
   }
 
   const supabase = createAdminClient();
-  const [profileResult, sessionsResult] = await Promise.all([
+  const [profileResult, sessionsResult, checkIns] = await Promise.all([
     supabase.from("profiles").select(PROFILE_COLUMNS).eq("id", userId).maybeSingle(),
     supabase
       .from("fast_sessions")
@@ -142,6 +148,7 @@ export async function getHistoryData(userId: string | null | undefined): Promise
       .gt("duration_minutes", 0)
       .order("created_at", { ascending: false })
       .limit(120),
+    getDailyCheckIns(userId),
   ]);
 
   if (profileResult.error) {
@@ -160,6 +167,8 @@ export async function getHistoryData(userId: string | null | undefined): Promise
         }
       : null,
     sessions: (sessionsResult.data ?? []).map(mapFastSession),
+    checkIns,
+    checkInInsights: buildCheckInInsights(checkIns),
   };
 }
 
@@ -256,6 +265,7 @@ export async function getProfilePageData(userId: string | null | undefined): Pro
       badges: [],
       earnedBadges: [],
       recentActivity: [],
+      notifications: [],
       notificationsEnabled: false,
       liveStatusSharingEnabled: true,
       liveStatusSharingSupported: false,
@@ -264,7 +274,7 @@ export async function getProfilePageData(userId: string | null | undefined): Pro
 
   const supabase = createAdminClient();
 
-  const [profileResult, badgeResult, userBadgeResult, activityResult] = await Promise.all([
+  const [profileResult, badgeResult, userBadgeResult, activityResult, notificationInbox] = await Promise.all([
     supabase.from("profiles").select(PROFILE_COLUMNS).eq("id", userId).single(),
     supabase.from("badges").select("*").order("name"),
     supabase
@@ -278,6 +288,7 @@ export async function getProfilePageData(userId: string | null | undefined): Pro
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(12),
+    getAppNotifications(userId, 8),
   ]);
   const subscriptionResult = await supabase
     .from("push_subscriptions")
@@ -332,6 +343,7 @@ export async function getProfilePageData(userId: string | null | undefined): Pro
         avatarUrl: profile.avatarUrl,
       })
     ),
+    notifications: notificationInbox,
     notificationsEnabled: !subscriptionResult.error && (subscriptionResult.data ?? []).length > 0,
     liveStatusSharingEnabled: profile.shareLiveStatus,
     liveStatusSharingSupported,
@@ -1097,6 +1109,19 @@ export async function createEncouragementComment(
 
   const author = await getProfileById(userId);
   const comment = mapEncouragementComment(insertResult.data, author);
+  const authorName = author?.displayName?.trim() || "A friend";
+
+  await createAppNotification({
+    userId: input.recipientId,
+    actorId: userId,
+    type: "encouragement_received",
+    title: "New encouragement",
+    body: `${authorName} left you encouragement.`,
+    href: "/friends",
+    metadata: {
+      commentId: comment.id,
+    },
+  });
 
   try {
     await notifyEncouragementRecipient(input.recipientId, author);
@@ -1105,6 +1130,202 @@ export async function createEncouragementComment(
   }
 
   return comment;
+}
+
+export async function upsertDailyCheckIn(
+  userId: string,
+  input: {
+    sessionId: string;
+    energy: number;
+    mood: number;
+    hunger: number;
+    sleepQuality: number;
+    note?: string | null;
+  }
+) {
+  const sessionResult = await createAdminClient()
+    .from("fast_sessions")
+    .select("id,user_id,status")
+    .eq("id", input.sessionId)
+    .eq("user_id", userId)
+    .eq("status", "completed")
+    .maybeSingle();
+
+  if (sessionResult.error) {
+    throw sessionResult.error;
+  }
+
+  if (!sessionResult.data) {
+    throw new Error("Completed fast not found.");
+  }
+
+  const checkInResult = await createAdminClient()
+    .from("fasting_checkins")
+    .upsert(
+      {
+        user_id: userId,
+        session_id: input.sessionId,
+        energy: input.energy,
+        mood: input.mood,
+        hunger: input.hunger,
+        sleep_quality: input.sleepQuality,
+        note: normalizeOptionalText(input.note),
+      },
+      { onConflict: "user_id,session_id" }
+    )
+    .select(DAILY_CHECKIN_COLUMNS)
+    .single();
+
+  if (checkInResult.error) {
+    throw checkInResult.error;
+  }
+
+  return mapDailyCheckIn(checkInResult.data);
+}
+
+export async function markAppNotificationRead(userId: string, notificationId: string) {
+  const updateResult = await createAdminClient()
+    .from("app_notifications")
+    .update({
+      read_at: new Date().toISOString(),
+    })
+    .eq("id", notificationId)
+    .eq("user_id", userId)
+    .select("id")
+    .maybeSingle();
+
+  if (updateResult.error) {
+    throw updateResult.error;
+  }
+
+  if (!updateResult.data) {
+    throw new Error("Notification not found.");
+  }
+
+  return updateResult.data.id;
+}
+
+async function getAppNotifications(userId: string, limit = 12): Promise<AppNotification[]> {
+  const notificationResult = await createAdminClient()
+    .from("app_notifications")
+    .select(APP_NOTIFICATION_COLUMNS)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(Math.min(Math.max(limit, 1), 50));
+
+  if (notificationResult.error) {
+    const message = String(notificationResult.error.message ?? "");
+
+    if (message.includes("app_notifications")) {
+      return [];
+    }
+
+    throw notificationResult.error;
+  }
+
+  const actorIds = (notificationResult.data ?? [])
+    .map((notification) => notification.actor_id)
+    .filter((actorId): actorId is string => Boolean(actorId));
+  const actorLookup = await getProfilesById(actorIds);
+
+  return (notificationResult.data ?? []).map((notification) =>
+    mapAppNotification(notification, notification.actor_id ? actorLookup.get(notification.actor_id) ?? null : null)
+  );
+}
+
+async function createAppNotification(input: {
+  userId: string;
+  actorId?: string | null;
+  type: AppNotification["type"];
+  title: string;
+  body: string;
+  href: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const insertResult = await createAdminClient().from("app_notifications").insert({
+    user_id: input.userId,
+    actor_id: input.actorId ?? null,
+    notification_type: input.type,
+    title: input.title,
+    body: input.body,
+    href: input.href,
+    metadata: input.metadata ?? {},
+  });
+
+  if (insertResult.error) {
+    const message = String(insertResult.error.message ?? "");
+
+    if (message.includes("app_notifications")) {
+      return;
+    }
+
+    throw insertResult.error;
+  }
+}
+
+async function getDailyCheckIns(userId: string) {
+  const checkInResult = await createAdminClient()
+    .from("fasting_checkins")
+    .select(DAILY_CHECKIN_COLUMNS)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(120);
+
+  if (checkInResult.error) {
+    const message = String(checkInResult.error.message ?? "");
+
+    if (message.includes("fasting_checkins")) {
+      return [] satisfies DailyCheckIn[];
+    }
+
+    throw checkInResult.error;
+  }
+
+  return (checkInResult.data ?? []).map(mapDailyCheckIn);
+}
+
+function buildCheckInInsights(checkIns: DailyCheckIn[]) {
+  if (!checkIns.length) {
+    return [];
+  }
+
+  const average = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1);
+  const averageEnergy = average(checkIns.map((checkIn) => checkIn.energy));
+  const averageMood = average(checkIns.map((checkIn) => checkIn.mood));
+  const averageHunger = average(checkIns.map((checkIn) => checkIn.hunger));
+  const goodEnergyCount = checkIns.filter((checkIn) => checkIn.energy >= 4).length;
+
+  return [
+    {
+      label: "Energy",
+      value: averageEnergy.toFixed(1),
+      detail:
+        averageEnergy >= 4
+          ? "Your recent fasts are landing with strong energy."
+          : "Energy is mixed; consider gentler targets on lower-energy days.",
+    },
+    {
+      label: "Mood",
+      value: averageMood.toFixed(1),
+      detail:
+        averageMood >= 4
+          ? "Mood looks steady after recent sessions."
+          : "Mood has room to improve; watch sleep, stress, and timing.",
+    },
+    {
+      label: "Hunger",
+      value: averageHunger.toFixed(1),
+      detail:
+        averageHunger >= 4
+          ? "Hunger has been high; consistency may improve with less aggressive windows."
+          : "Hunger has stayed manageable across recent check-ins.",
+    },
+    {
+      label: "Best signal",
+      value: `${goodEnergyCount}/${checkIns.length}`,
+      detail: "Check-ins with strong energy help identify your most repeatable fasting rhythm.",
+    },
+  ];
 }
 
 async function getHighestMilestoneStage(userId: string, session: FastSession | null) {
@@ -1714,12 +1935,18 @@ export async function getChallengesListData(userId: string | null | undefined): 
   if (participantResult?.error) throw participantResult.error;
 
   const participantIds = participantResult?.data?.map((p: { challenge_id: string }) => p.challenge_id) ?? [];
+  const visibilityFilter =
+    userId && participantIds.length
+      ? `is_public.eq.true,creator_id.eq.${userId},id.in.(${participantIds.join(",")})`
+      : userId
+      ? `is_public.eq.true,creator_id.eq.${userId}`
+      : "is_public.eq.true";
 
   const [challengesResult, countResult] = await Promise.all([
     supabase
       .from("challenges")
       .select("*")
-      .or(userId ? `is_public.eq.true,creator_id.eq.${userId}` : "is_public.eq.true")
+      .or(visibilityFilter)
       .order("starts_at", { ascending: false }),
     supabase
       .from("challenge_participants")
@@ -1771,6 +1998,11 @@ export async function getChallengeDetail(challengeId: string, userId: string | n
   const challenge = challengeResult.data as DatabaseChallenge;
 
   const participantIds = (participantResult.data ?? []).map((p: DatabaseChallengeParticipant) => p.user_id);
+
+  if (!challenge.is_public && userId !== challenge.creator_id && (!userId || !participantIds.includes(userId))) {
+    return null;
+  }
+
   const allIds = [...new Set([challenge.creator_id, ...participantIds])];
   const profiles = allIds.length
     ? await supabase.from("profiles").select("id,display_name,avatar_url").in("id", allIds).then((r) => r.data ?? [])
@@ -1828,12 +2060,14 @@ export async function createChallenge(
     challengeType: ChallengeType;
     targetValue: number;
     durationDays: number;
+    visibility?: "circle" | "public";
   }
 ): Promise<string> {
   const supabase = createAdminClient();
   const now = new Date();
   const endsAt = new Date(now);
   endsAt.setDate(endsAt.getDate() + data.durationDays);
+  const isPublic = data.visibility === "public";
 
   const { data: challenge, error } = await supabase
     .from("challenges")
@@ -1846,24 +2080,47 @@ export async function createChallenge(
       duration_days: data.durationDays,
       starts_at: now.toISOString(),
       ends_at: endsAt.toISOString(),
-      is_public: true,
+      is_public: isPublic,
     })
     .select("id")
     .single();
 
   if (error) throw error;
 
+  const circleFriendIds = isPublic ? [] : await getAcceptedFriendIds(userId);
+  const participantUserIds = [...new Set([userId, ...circleFriendIds])];
   const { error: participantError } = await supabase.from("challenge_participants").upsert(
-    {
+    participantUserIds.map((participantUserId) => ({
       challenge_id: challenge.id,
-      user_id: userId,
+      user_id: participantUserId,
       progress: 0,
       completed: false,
-    },
+    })),
     { onConflict: "challenge_id,user_id", ignoreDuplicates: true }
   );
 
   if (participantError) throw participantError;
+
+  if (!isPublic && circleFriendIds.length) {
+    const creator = await getProfileById(userId);
+    const creatorName = creator?.displayName?.trim() || "A friend";
+
+    await Promise.all(
+      circleFriendIds.map((friendId) =>
+        createAppNotification({
+          userId: friendId,
+          actorId: userId,
+          type: "circle_challenge_created",
+          title: "New circle challenge",
+          body: `${creatorName} invited you to ${data.title}.`,
+          href: `/challenges/${challenge.id}`,
+          metadata: {
+            challengeId: challenge.id,
+          },
+        })
+      )
+    );
+  }
 
   return challenge.id;
 }
@@ -1873,12 +2130,13 @@ export async function joinChallenge(challengeId: string, userId: string): Promis
 
   const { data: challenge, error: challengeError } = await supabase
     .from("challenges")
-    .select("id,ends_at")
+    .select("id,ends_at,is_public")
     .eq("id", challengeId)
     .maybeSingle();
 
   if (challengeError) throw challengeError;
   if (!challenge) throw new Error("Challenge not found.");
+  if (!challenge.is_public) throw new Error("Challenge not found.");
   if (challenge.ends_at <= new Date().toISOString()) throw new Error("This challenge has ended.");
 
   const { error } = await supabase.from("challenge_participants").upsert(

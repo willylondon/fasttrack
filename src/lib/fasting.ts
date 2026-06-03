@@ -80,6 +80,37 @@ export type EncouragementComment = {
   author: SocialProfile | null;
 };
 
+export type AppNotification = {
+  id: string;
+  userId: string;
+  actorId: string | null;
+  type: "encouragement_received" | "circle_challenge_created";
+  title: string;
+  body: string;
+  href: string;
+  readAt: string | null;
+  createdAt: string;
+  actor: SocialProfile | null;
+};
+
+export type DailyCheckIn = {
+  id: string;
+  userId: string;
+  sessionId: string;
+  energy: number;
+  mood: number;
+  hunger: number;
+  sleepQuality: number;
+  note: string | null;
+  createdAt: string;
+};
+
+export type CheckInInsight = {
+  label: string;
+  value: string;
+  detail: string;
+};
+
 export type FriendRequest = {
   id: string;
   sender: SocialProfile;
@@ -143,6 +174,8 @@ export type DashboardData = {
 export type HistoryData = {
   profile: ProfileSummary | null;
   sessions: FastSession[];
+  checkIns: DailyCheckIn[];
+  checkInInsights: CheckInInsight[];
 };
 
 export type FeedGroup = {
@@ -218,6 +251,7 @@ export type ProfilePageData = {
   badges: BadgeDefinition[];
   earnedBadges: UserBadge[];
   recentActivity: FeedEvent[];
+  notifications: AppNotification[];
   notificationsEnabled: boolean;
   liveStatusSharingEnabled: boolean;
   liveStatusSharingSupported: boolean;
@@ -260,12 +294,36 @@ type DatabaseFeedEvent = {
   created_at: string;
 };
 
+type DatabaseAppNotification = {
+  id: string;
+  user_id: string;
+  actor_id: string | null;
+  notification_type: "encouragement_received" | "circle_challenge_created";
+  title: string;
+  body: string;
+  href: string;
+  read_at: string | null;
+  created_at: string;
+};
+
 type DatabaseEncouragementComment = {
   id: string;
   author_id: string;
   recipient_id: string;
   body: string;
   context: "leaderboard";
+  created_at: string;
+};
+
+type DatabaseDailyCheckIn = {
+  id: string;
+  user_id: string;
+  session_id: string;
+  energy: number;
+  mood: number;
+  hunger: number;
+  sleep_quality: number;
+  note: string | null;
   created_at: string;
 };
 
@@ -363,6 +421,8 @@ export const EMPTY_DASHBOARD_DATA: DashboardData = {
 export const EMPTY_HISTORY_DATA: HistoryData = {
   profile: null,
   sessions: [],
+  checkIns: [],
+  checkInInsights: [],
 };
 
 export function mapProfile(record: DatabaseProfile): ProfileSummary {
@@ -421,6 +481,38 @@ export function mapEncouragementComment(
     context: record.context,
     createdAt: record.created_at,
     author,
+  };
+}
+
+export function mapAppNotification(
+  record: DatabaseAppNotification,
+  actor: SocialProfile | null
+): AppNotification {
+  return {
+    id: record.id,
+    userId: record.user_id,
+    actorId: record.actor_id,
+    type: record.notification_type,
+    title: record.title,
+    body: record.body,
+    href: record.href,
+    readAt: record.read_at,
+    createdAt: record.created_at,
+    actor,
+  };
+}
+
+export function mapDailyCheckIn(record: DatabaseDailyCheckIn): DailyCheckIn {
+  return {
+    id: record.id,
+    userId: record.user_id,
+    sessionId: record.session_id,
+    energy: record.energy,
+    mood: record.mood,
+    hunger: record.hunger,
+    sleepQuality: record.sleep_quality,
+    note: record.note,
+    createdAt: record.created_at,
   };
 }
 
