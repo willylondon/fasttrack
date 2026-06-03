@@ -358,6 +358,7 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
       outgoingRequests: [],
       friends: [],
       liveSessions: [],
+      encouragementsEnabled: false,
     };
   }
 
@@ -402,10 +403,11 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
   const leaderboardIds = Array.from(new Set([userId, ...friendIds]));
   const lookupIds = Array.from(new Set([...incomingIds, ...outgoingIds, ...leaderboardIds]));
   const profilesById = await getProfilesById(lookupIds, true);
-  const [emailLookup, liveSessions, latestCompletedSessions] = await Promise.all([
+  const [emailLookup, liveSessions, latestCompletedSessions, encouragementSummary] = await Promise.all([
     getEmailsById([...incomingIds, ...outgoingIds]),
     getActiveFriendSessions(leaderboardIds, userId, profilesById),
     getLatestCompletedFriendSessions(leaderboardIds),
+    getEncouragementSummary(leaderboardIds),
   ]);
   const liveSessionLookup = new Map(liveSessions.map((session) => [session.userId, session]));
   const latestCompletedSessionLookup = new Map(latestCompletedSessions.map((session) => [session.userId, session]));
@@ -466,6 +468,7 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
         longestStreak: friend.longestStreak ?? 0,
         activeSession: liveSessionLookup.get(friend.id) ?? null,
         latestCompletedSession: latestCompletedSessionLookup.get(friend.id) ?? null,
+        encouragementCount: encouragementSummary.counts.get(friend.id) ?? 0,
         isCurrentUser,
       } satisfies FriendListItem;
     })
@@ -483,6 +486,7 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
     outgoingRequests,
     friends,
     liveSessions,
+    encouragementsEnabled: encouragementSummary.available,
   };
 }
 

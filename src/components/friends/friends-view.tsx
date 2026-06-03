@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { SignInDialog } from "@/components/auth/sign-in-dialog";
+import { EncouragementDialog } from "@/components/social/encouragement-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -72,6 +73,7 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
   const [searchFeedback, setSearchFeedback] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+  const friendsById = new Map(friendsData.friends.map((friend) => [friend.id, friend]));
 
   useEffect(() => {
     setFriendsData(initialData);
@@ -435,12 +437,13 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                 const stage = getStageForMinutes(elapsedMinutes);
                 const rank = index + 1;
                 const isLeader = rank === 1;
+                const friend = friendsById.get(session.userId);
 
                 return (
                   <div
                     key={session.userId}
                     className={cn(
-                      "glass-soft flex items-center justify-between gap-3 rounded-[1.5rem] px-4 py-4",
+                      "glass-soft flex flex-col gap-4 rounded-[1.5rem] px-4 py-4 sm:flex-row sm:items-center sm:justify-between",
                       session.isCurrentUser ? "border border-primary/25 shadow-[0_16px_40px_rgba(124,92,255,0.12)]" : "",
                       isLeader ? "bg-gold/5" : ""
                     )}
@@ -489,11 +492,24 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
-                        {formatCompactDuration(elapsedMinutes)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">planned {formatCompactDuration(session.plannedMinutes)}</p>
+                    <div className="flex shrink-0 items-center justify-between gap-3 border-t border-white/[0.06] pt-3 sm:border-t-0 sm:pt-0">
+                      {friendsData.encouragementsEnabled ? (
+                        <EncouragementDialog
+                          target={{
+                            userId: session.userId,
+                            displayName: session.displayName,
+                            avatarUrl: session.avatarUrl,
+                            isCurrentUser: Boolean(session.isCurrentUser),
+                            encouragementCount: friend?.encouragementCount ?? 0,
+                          }}
+                        />
+                      ) : null}
+                      <div className="text-right">
+                        <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
+                          {formatCompactDuration(elapsedMinutes)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">planned {formatCompactDuration(session.plannedMinutes)}</p>
+                      </div>
                     </div>
                   </div>
                 );
@@ -511,7 +527,7 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
               return (
                 <div
                   key={friend.id}
-                  className="glass-soft flex items-center justify-between gap-3 rounded-[1.5rem] px-4 py-4"
+                  className="glass-soft flex flex-col gap-4 rounded-[1.5rem] px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <Avatar size="sm">
@@ -549,29 +565,42 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                       </p>
                     </div>
                   </div>
-                  <div className="shrink-0 text-right">
-                    {friend.activeSession ? (
-                      <>
-                        <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
-                          {formatCompactDuration(friend.activeSession.plannedMinutes)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">planned window</p>
-                      </>
-                    ) : latestCompletedSession ? (
-                      <>
-                        <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
-                          {formatCompactDuration(latestCompletedSession.durationMinutes)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">last fast</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
-                          {friend.currentStreak}
-                        </p>
-                        <p className="text-xs text-muted-foreground">current streak</p>
-                      </>
-                    )}
+                  <div className="flex shrink-0 items-center justify-between gap-3 border-t border-white/[0.06] pt-3 sm:border-t-0 sm:pt-0">
+                    {friendsData.encouragementsEnabled ? (
+                      <EncouragementDialog
+                        target={{
+                          userId: friend.id,
+                          displayName: friend.displayName,
+                          avatarUrl: friend.avatarUrl,
+                          isCurrentUser: friend.isCurrentUser,
+                          encouragementCount: friend.encouragementCount,
+                        }}
+                      />
+                    ) : null}
+                    <div className="text-right">
+                      {friend.activeSession ? (
+                        <>
+                          <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
+                            {formatCompactDuration(friend.activeSession.plannedMinutes)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">planned window</p>
+                        </>
+                      ) : latestCompletedSession ? (
+                        <>
+                          <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
+                            {formatCompactDuration(latestCompletedSession.durationMinutes)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">last fast</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
+                            {friend.currentStreak}
+                          </p>
+                          <p className="text-xs text-muted-foreground">current streak</p>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

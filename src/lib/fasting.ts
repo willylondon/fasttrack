@@ -118,6 +118,7 @@ export type FriendListItem = {
   longestStreak: number;
   activeSession: FriendLiveSession | null;
   latestCompletedSession: FriendCompletedSession | null;
+  encouragementCount: number;
   isCurrentUser: boolean;
 };
 
@@ -159,6 +160,7 @@ export type FriendsPageData = {
   outgoingRequests: OutgoingFriendRequest[];
   friends: FriendListItem[];
   liveSessions: FriendLiveSession[];
+  encouragementsEnabled: boolean;
 };
 
 export type BadgeDefinition = {
