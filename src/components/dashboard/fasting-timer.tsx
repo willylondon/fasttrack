@@ -131,6 +131,12 @@ const CONFETTI_PIECES = Array.from({ length: 26 }, (_, index) => ({
   color: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
 }));
 const DASHBOARD_REFRESH_COOLDOWN_MS = 2 * 60 * 1000;
+const QUICK_BACKDATE_OPTIONS = [
+  { label: "30m", minutes: 30 },
+  { label: "1h", minutes: 60 },
+  { label: "2h", minutes: 120 },
+  { label: "4h", minutes: 240 },
+] as const;
 
 async function readApiError(response: Response) {
   try {
@@ -677,6 +683,14 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     setPendingStartAdjustment(null);
   }
 
+  function setManualStartFromBackdate(minutes: number) {
+    const startedAt = new Date(Date.now() - minutes * 60000).toISOString();
+
+    setStartTimeMode("earlier");
+    setStartTimeValue(getClockValue(startedAt));
+    setStartTimeError(null);
+  }
+
   async function applyStartTimeChange(payload: PendingStartAdjustment) {
     if (payload.mode === "edit" && !activeSession) {
       toast.error("No active fast is available to adjust.");
@@ -1137,16 +1151,32 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                   </label>
                   <Input
                     id="start-time"
-                    type="time"
+                    type="text"
+                    enterKeyHint="done"
                     inputMode="numeric"
+                    maxLength={5}
+                    pattern="[0-9:]*"
+                    placeholder="14:00"
                     value={startTimeValue}
                     onChange={(event) => {
-                      setStartTimeValue(event.target.value);
+                      setStartTimeValue(event.target.value.replace(/[^\d:]/g, "").slice(0, 5));
                       setStartTimeError(null);
                     }}
                   />
+                  <div className="grid grid-cols-4 gap-2">
+                    {QUICK_BACKDATE_OPTIONS.map((option) => (
+                      <button
+                        key={option.minutes}
+                        className="min-h-10 rounded-xl border border-white/[0.08] bg-white/[0.04] px-2 text-xs font-medium text-foreground transition-colors hover:bg-white/[0.08]"
+                        onClick={() => setManualStartFromBackdate(option.minutes)}
+                        type="button"
+                      >
+                        {option.label} ago
+                      </button>
+                    ))}
+                  </div>
                   <p className="text-sm leading-6 text-muted-foreground">
-                    You’re adjusting your start time. Make sure this reflects when your fasting window actually began.
+                    Type a 24-hour time, or use a quick backdate. Then use the Start fast button below.
                   </p>
                 </div>
               ) : null}
