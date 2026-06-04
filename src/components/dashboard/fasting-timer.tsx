@@ -1090,8 +1090,8 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
             }
           }}
         >
-          <DialogContent className="mx-2 max-w-[calc(100vw-1rem)] top-[calc(env(safe-area-inset-top)+0.75rem)] bottom-[calc(env(safe-area-inset-bottom)+7.5rem)] max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-8.25rem)] translate-y-0 overflow-y-auto overscroll-contain pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:bottom-auto sm:top-1/2 sm:mx-auto sm:max-h-[min(720px,calc(100dvh-2rem))] sm:max-w-lg sm:-translate-y-1/2 sm:pb-5">
-            <DialogHeader>
+          <DialogContent className="bottom-[calc(env(safe-area-inset-bottom)+5.75rem)] top-[calc(env(safe-area-inset-top)+0.5rem)] mx-2 flex max-w-[calc(100vw-1rem)] translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:bottom-auto sm:top-1/2 sm:mx-auto sm:max-h-[min(720px,calc(100dvh-2rem))] sm:max-w-lg sm:-translate-y-1/2">
+            <DialogHeader className="shrink-0 px-4 pb-3 pt-4 pr-12 sm:px-5 sm:pt-5">
               <DialogTitle>When did your fast start?</DialogTitle>
               <DialogDescription>
                 {startDialogMode === "start"
@@ -1100,7 +1100,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 pb-4 sm:px-5">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {([
                   { label: "Now", value: "now" },
@@ -1202,7 +1202,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
               {startTimeError ? <p className="text-sm text-destructive">{startTimeError}</p> : null}
             </div>
 
-            <DialogFooter className="sticky bottom-0 z-10">
+            <DialogFooter className="mx-0 mb-0 shrink-0 px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:mx-0 sm:mb-0 sm:px-5 sm:py-4">
               <Button onClick={closeStartTimeDialog} variant="outline">
                 Keep current
               </Button>
