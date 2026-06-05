@@ -243,6 +243,7 @@ Performance note:
   - XP transaction
   - badge checks
   - optional level-up event
+- Completed fast end times can be corrected from History through `PATCH /api/fasts/[sessionId]` with `action: "edit_end"`. The server recalculates `duration_minutes` and `stage_reached`; the profile stat trigger recalculates totals/streaks.
 
 ### Social Flow
 
@@ -398,6 +399,7 @@ Social/history changes preserved in current `main`:
 - Encouragements trigger Web Push notifications for recipients who enabled notifications in Profile. Required Vercel env vars are `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT`; notification failure must not block saving the encouragement.
 - Profile now has a durable in-app Inbox for encouragements and circle challenge invites.
 - History now has per-fast check-ins plus simple pattern insights for energy, mood, hunger, and strong-energy sessions.
+- History recent fast rows now support editing a completed fast's end date/time for signed-in users.
 - Challenges now default to Circle visibility, which invites accepted friends automatically; Public challenges remain available.
 
 ## Security Notes

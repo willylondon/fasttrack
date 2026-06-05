@@ -11,9 +11,17 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { DailyCheckIn, HistoryData, buildHistorySeries, calculateStats, formatCompactDuration } from "@/lib/fasting";
+import {
+  DailyCheckIn,
+  FastSession,
+  HistoryData,
+  buildHistorySeries,
+  calculateStats,
+  formatCompactDuration,
+} from "@/lib/fasting";
 import { buildSignedOutHistoryData, readLocalDashboardData } from "@/lib/local-dashboard";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +40,11 @@ type CheckInDraft = {
   hunger: number;
   sleepQuality: number;
   note: string;
+};
+
+type EndTimeDraft = {
+  date: string;
+  time: string;
 };
 
 const DEFAULT_CHECK_IN_DRAFT: CheckInDraft = {
@@ -108,12 +121,40 @@ function buildLocalCheckInInsights(checkIns: DailyCheckIn[]) {
   ];
 }
 
+function formatDateDraft(value: string) {
+  return format(new Date(value), "yyyy-MM-dd");
+}
+
+function formatTimeDraft(value: string) {
+  return format(new Date(value), "HH:mm");
+}
+
+function resolveEndTimeDraft(draft: EndTimeDraft) {
+  const dateMatch = /^\d{4}-\d{2}-\d{2}$/.test(draft.date);
+  const timeMatch = /^([01]\d|2[0-3]):([0-5]\d)$/.test(draft.time);
+
+  if (!dateMatch || !timeMatch) {
+    return null;
+  }
+
+  const parsed = new Date(`${draft.date}T${draft.time}:00`);
+
+  if (!Number.isFinite(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed.toISOString();
+}
+
 export function HistoryView({ initialData, providers, signedIn }: HistoryViewProps) {
   const [history, setHistory] = useState(initialData);
   const [checkInDrafts, setCheckInDrafts] = useState<Record<string, CheckInDraft>>(() =>
     buildDrafts(initialData.checkIns)
   );
   const [savingCheckInId, setSavingCheckInId] = useState<string | null>(null);
+  const [editingEndSessionId, setEditingEndSessionId] = useState<string | null>(null);
+  const [savingEndSessionId, setSavingEndSessionId] = useState<string | null>(null);
+  const [endTimeDrafts, setEndTimeDrafts] = useState<Record<string, EndTimeDraft>>({});
 
   useEffect(() => {
     if (!signedIn) {
@@ -156,6 +197,88 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
         ...patch,
       },
     }));
+  }
+
+  function startEditingEndTime(session: FastSession) {
+    const endedAt = session.endedAt;
+
+    if (!endedAt) {
+      return;
+    }
+
+    setEditingEndSessionId(session.id);
+    setEndTimeDrafts((current) => ({
+      ...current,
+      [session.id]: current[session.id] ?? {
+        date: formatDateDraft(endedAt),
+        time: formatTimeDraft(endedAt),
+      },
+    }));
+  }
+
+  function updateEndTimeDraft(sessionId: string, patch: Partial<EndTimeDraft>) {
+    setEndTimeDrafts((current) => ({
+      ...current,
+      [sessionId]: {
+        date: current[sessionId]?.date ?? "",
+        time: current[sessionId]?.time ?? "",
+        ...patch,
+      },
+    }));
+  }
+
+  async function refreshHistory() {
+    const response = await fetch("/api/history", { cache: "no-store" });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+      throw new Error(payload?.message ?? "Unable to refresh history.");
+    }
+
+    const nextHistory = (await response.json()) as HistoryData;
+    setHistory(nextHistory);
+    setCheckInDrafts(buildDrafts(nextHistory.checkIns));
+  }
+
+  async function saveEndTime(sessionId: string) {
+    const draft = endTimeDrafts[sessionId];
+    const endedAt = draft ? resolveEndTimeDraft(draft) : null;
+
+    if (!endedAt) {
+      toast.error("Use a valid date and 24-hour end time.");
+      return;
+    }
+
+    setSavingEndSessionId(sessionId);
+
+    try {
+      const response = await fetch(`/api/fasts/${sessionId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "edit_end",
+          endedAt,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        session?: FastSession;
+        message?: string;
+      } | null;
+
+      if (!response.ok || !payload?.session) {
+        throw new Error(payload?.message ?? "Unable to save end time.");
+      }
+
+      await refreshHistory();
+      setEditingEndSessionId(null);
+      toast.success("End time updated.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to save end time.");
+    } finally {
+      setSavingEndSessionId(null);
+    }
   }
 
   async function saveCheckIn(sessionId: string) {
@@ -460,30 +583,106 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
         </CardHeader>
         <CardContent className="space-y-3">
           {completedSessions.length ? (
-            completedSessions.map((session) => (
-              <div
-                key={session.id}
-                className="glass-soft flex flex-col gap-3 rounded-[1.5rem] px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
-                  <p className="font-medium text-foreground">
-                    {session.endedAt ? format(new Date(session.endedAt), "EEEE, MMM d") : "In progress"}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Started {format(new Date(session.startedAt), "h:mm a")}
-                  </p>
-                  {session.notes ? <p className="mt-2 text-sm text-muted-foreground">{session.notes}</p> : null}
+            completedSessions.map((session) => {
+              const editingEnd = editingEndSessionId === session.id;
+              const endDraft = endTimeDrafts[session.id] ?? {
+                date: session.endedAt ? formatDateDraft(session.endedAt) : "",
+                time: session.endedAt ? formatTimeDraft(session.endedAt) : "",
+              };
+
+              return (
+                <div
+                  key={session.id}
+                  className="glass-soft flex flex-col gap-4 rounded-[1.5rem] px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-foreground">
+                      {session.endedAt ? format(new Date(session.endedAt), "EEEE, MMM d") : "In progress"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Started {format(new Date(session.startedAt), "h:mm a")}
+                      {session.endedAt ? ` • Ended ${format(new Date(session.endedAt), "h:mm a")}` : ""}
+                    </p>
+                    {session.notes ? <p className="mt-2 text-sm text-muted-foreground">{session.notes}</p> : null}
+
+                    {editingEnd ? (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                        <label className="space-y-2">
+                          <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                            End date
+                          </span>
+                          <Input
+                            inputMode="numeric"
+                            maxLength={10}
+                            onChange={(event) =>
+                              updateEndTimeDraft(session.id, {
+                                date: event.target.value.replace(/[^\d-]/g, "").slice(0, 10),
+                              })
+                            }
+                            placeholder="2026-06-05"
+                            value={endDraft.date}
+                          />
+                        </label>
+                        <label className="space-y-2">
+                          <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                            End time
+                          </span>
+                          <Input
+                            enterKeyHint="done"
+                            inputMode="numeric"
+                            maxLength={5}
+                            onChange={(event) =>
+                              updateEndTimeDraft(session.id, {
+                                time: event.target.value.replace(/[^\d:]/g, "").slice(0, 5),
+                              })
+                            }
+                            placeholder="18:30"
+                            value={endDraft.time}
+                          />
+                        </label>
+                        <div className="flex gap-2">
+                          <Button
+                            className="rounded-2xl"
+                            disabled={savingEndSessionId === session.id}
+                            onClick={() => void saveEndTime(session.id)}
+                            size="sm"
+                          >
+                            {savingEndSessionId === session.id ? "Saving..." : "Save"}
+                          </Button>
+                          <Button
+                            className="rounded-2xl"
+                            disabled={savingEndSessionId === session.id}
+                            onClick={() => setEditingEndSessionId(null)}
+                            size="sm"
+                            variant="outline"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 lg:justify-end">
+                    <Badge variant="outline" className="border-accent/40 text-accent">
+                      Goal {formatCompactDuration(session.plannedMinutes)}
+                    </Badge>
+                    <span className="font-[family:var(--font-heading)] text-lg font-semibold">
+                      {formatCompactDuration(session.durationMinutes ?? 0)}
+                    </span>
+                    {signedIn && session.endedAt ? (
+                      <Button
+                        className="rounded-2xl"
+                        onClick={() => startEditingEndTime(session)}
+                        size="sm"
+                        variant="outline"
+                      >
+                        Edit end
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="border-accent/40 text-accent">
-                    Goal {formatCompactDuration(session.plannedMinutes)}
-                  </Badge>
-                  <span className="font-[family:var(--font-heading)] text-lg font-semibold">
-                    {formatCompactDuration(session.durationMinutes ?? 0)}
-                  </span>
-                </div>
-              </div>
-            ))
+              );
+            })
           ) : (
             <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/60 px-5 py-12 text-center text-sm text-muted-foreground">
               No completed sessions yet. Once you finish a planned window, it will appear here.

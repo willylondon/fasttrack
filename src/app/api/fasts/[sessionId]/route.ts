@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getErrorMessage, getErrorStatus, getZodMessage, jsonMessage, readJsonBody } from "@/lib/api-responses";
-import { getCurrentUserId, recordMilestone, updateFast, updateFastStartTime } from "@/lib/fasting-data";
+import { getCurrentUserId, recordMilestone, updateFast, updateFastEndTime, updateFastStartTime } from "@/lib/fasting-data";
 
 const updateFastSchema = z.discriminatedUnion("action", [
   z.object({
@@ -20,6 +20,10 @@ const updateFastSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("edit_start"),
     startedAt: z.string().refine((value) => !Number.isNaN(Date.parse(value)), "Choose a valid start time."),
+  }),
+  z.object({
+    action: z.literal("edit_end"),
+    endedAt: z.string().refine((value) => !Number.isNaN(Date.parse(value)), "Choose a valid end time."),
   }),
 ]);
 
@@ -60,6 +64,12 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
     if (payload.action === "edit_start") {
       const session = await updateFastStartTime(userId, sessionId, payload.startedAt);
+
+      return NextResponse.json({ session });
+    }
+
+    if (payload.action === "edit_end") {
+      const session = await updateFastEndTime(userId, sessionId, payload.endedAt);
 
       return NextResponse.json({ session });
     }

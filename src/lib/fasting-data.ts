@@ -666,6 +666,86 @@ export async function updateFastStartTime(userId: string, sessionId: string, sta
   return mapFastSession(updateResult.data);
 }
 
+export async function updateFastEndTime(userId: string, sessionId: string, endedAt: string) {
+  const supabase = createAdminClient();
+  const sessionResult = await supabase
+    .from("fast_sessions")
+    .select(FAST_SESSION_COLUMNS)
+    .eq("id", sessionId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (sessionResult.error) {
+    throw sessionResult.error;
+  }
+
+  if (!sessionResult.data) {
+    throw new Error("Fast session not found.");
+  }
+
+  if (sessionResult.data.status !== "completed") {
+    throw new Error("Only completed fasts can have their end time adjusted.");
+  }
+
+  const startedAtMs = Date.parse(sessionResult.data.started_at);
+  const endedAtMs = Date.parse(endedAt);
+  const nowMs = Date.now();
+
+  if (!Number.isFinite(endedAtMs)) {
+    throw new Error("Choose a valid end time.");
+  }
+
+  if (endedAtMs > nowMs) {
+    throw new Error("End time cannot be in the future.");
+  }
+
+  if (endedAtMs <= startedAtMs) {
+    throw new Error("End time must be after the start time.");
+  }
+
+  const durationMinutes = Math.round((endedAtMs - startedAtMs) / 60000);
+
+  if (durationMinutes < 1) {
+    throw new Error("Fast must be at least 1 minute long.");
+  }
+
+  const stageReached = getStageIndexForMinutes(durationMinutes);
+  const updateResult = await supabase
+    .from("fast_sessions")
+    .update({
+      ended_at: new Date(endedAtMs).toISOString(),
+      duration_minutes: durationMinutes,
+      stage_reached: stageReached,
+    })
+    .eq("id", sessionId)
+    .eq("user_id", userId)
+    .select(FAST_SESSION_COLUMNS)
+    .single();
+
+  if (updateResult.error) {
+    throw updateResult.error;
+  }
+
+  const feedUpdateResult = await supabase
+    .from("feed_events")
+    .update({
+      metadata: {
+        durationMinutes,
+        plannedMinutes: sessionResult.data.duration_planned_minutes,
+        sessionId,
+      },
+    })
+    .eq("user_id", userId)
+    .eq("event_type", "fast_completed")
+    .eq("metadata->>sessionId", sessionId);
+
+  if (feedUpdateResult.error) {
+    console.error("Fast completion feed metadata update failed", feedUpdateResult.error);
+  }
+
+  return mapFastSession(updateResult.data);
+}
+
 export async function updateFast(
   userId: string,
   sessionId: string,
