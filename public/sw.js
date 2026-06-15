@@ -1,4 +1,4 @@
-const STATIC_CACHE = "fasttrack-static-v2";
+const STATIC_CACHE = "fasttrack-static-v3";
 const STATIC_ASSETS = [
   "/offline.html",
   "/manifest.webmanifest",
@@ -48,17 +48,17 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  const sameOriginStaticRequest =
-    url.origin === self.location.origin &&
-    (url.pathname.startsWith("/_next/static/") ||
-      url.pathname.endsWith(".png") ||
-      url.pathname.endsWith(".svg") ||
-      url.pathname.endsWith(".ico") ||
-      url.pathname.endsWith(".webmanifest") ||
-      url.pathname.endsWith(".css") ||
-      url.pathname.endsWith(".js"));
+  // Never cache Next.js build assets here. Serving stale JS/CSS across deploys
+  // can hydrate new HTML with old chunks and break client interactivity.
+  if (url.pathname.startsWith("/_next/") || url.pathname.startsWith("/api/")) {
+    return;
+  }
 
-  if (!sameOriginStaticRequest || url.pathname.startsWith("/api/")) {
+  const cacheableStaticAsset =
+    url.origin === self.location.origin &&
+    STATIC_ASSETS.includes(url.pathname);
+
+  if (!cacheableStaticAsset) {
     return;
   }
 
