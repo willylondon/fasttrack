@@ -10,7 +10,7 @@ const startFastSchema = z.object({
     .number()
     .int()
     .min(MIN_PUBLIC_FAST_MINUTES, "Choose a fasting window of at least 12 hours.")
-    .max(MAX_PUBLIC_FAST_MINUTES, "FastTrack supports planned windows up to 18 hours for this beta."),
+    .max(MAX_PUBLIC_FAST_MINUTES, "FastTrack supports planned windows up to 24 hours."),
   startedAt: z
     .string()
     .refine((value) => !Number.isNaN(Date.parse(value)), "Choose a valid start time.")

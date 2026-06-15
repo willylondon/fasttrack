@@ -36,7 +36,6 @@ import {
   MANUAL_START_CONFIRM_MINUTES,
   MAX_MANUAL_START_BACKDATE_MINUTES,
   MAX_PUBLIC_FAST_MINUTES,
-  resolveManualStartTimeFromClock,
   validateManualStartTimestamp,
 } from "@/lib/fasting";
 import { FASTING_STAGES, type FastingStage } from "@/lib/fasting-stages";
@@ -87,6 +86,9 @@ const WINDOW_OPTIONS = [
   { label: "14h", minutes: 14 * 60 },
   { label: "16h", minutes: 16 * 60 },
   { label: "18h", minutes: 18 * 60 },
+  { label: "20h", minutes: 20 * 60 },
+  { label: "22h", minutes: 22 * 60 },
+  { label: "24h", minutes: 24 * 60 },
 ] as const;
 
 const SAFETY_ACKNOWLEDGEMENT_KEY = "fasttrack:safety-acknowledged:v1";
@@ -136,6 +138,8 @@ const QUICK_BACKDATE_OPTIONS = [
   { label: "1h", minutes: 60 },
   { label: "2h", minutes: 120 },
   { label: "4h", minutes: 240 },
+  { label: "12h", minutes: 720 },
+  { label: "24h", minutes: 1440 },
 ] as const;
 
 async function readApiError(response: Response) {
@@ -179,6 +183,27 @@ function formatTime(value: string | null) {
 
 function getClockValue(value: string | null | undefined) {
   return format(new Date(value ?? Date.now()), "HH:mm");
+}
+
+function getDateValue(value: string | null | undefined) {
+  return format(new Date(value ?? Date.now()), "yyyy-MM-dd");
+}
+
+function resolveManualStartTimeFromDraft(dateValue: string, timeValue: string) {
+  const dateMatch = /^\d{4}-\d{2}-\d{2}$/.test(dateValue);
+  const timeMatch = /^([01]\d|2[0-3]):([0-5]\d)$/.test(timeValue);
+
+  if (!dateMatch || !timeMatch) {
+    return null;
+  }
+
+  const parsed = new Date(`${dateValue}T${timeValue}:00`);
+
+  if (!Number.isFinite(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed.toISOString();
 }
 
 type LiveTimerPanelProps = {
@@ -293,9 +318,9 @@ function LiveTimerPanel({
                 <p className="text-sm text-muted-foreground">
                   Planned window: <span className="font-medium text-foreground">{formatCompactDuration(plannedMinutes)}</span>
                 </p>
-                {selectedWindow === "18h" ? (
+                {plannedMinutes >= 18 * 60 ? (
                   <p className="rounded-[1.1rem] border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-xs leading-5 text-amber-100">
-                    18h is FastTrack&apos;s cautious planning max for private beta. Stay within your plan and stop if you feel unwell.
+                    Extended windows from 18h to 24h need extra care. Stay within your plan and stop if you feel unwell.
                   </p>
                 ) : null}
                 <div className="rounded-[1.3rem] border border-white/[0.08] bg-black/20 px-4 py-3">
@@ -303,7 +328,7 @@ function LiveTimerPanel({
                   <p className="mt-2 text-base font-medium text-foreground">{statusLabel}</p>
                 </div>
                 <p className="text-sm leading-6 text-muted-foreground">
-                  Choose <span className="font-medium text-foreground">Now</span> or set a recent start time if your
+                  Choose <span className="font-medium text-foreground">Now</span> or set the date and time if your
                   fasting window began before you opened FastTrack.
                 </p>
               </div>
@@ -413,6 +438,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   const [isSharingResult, setIsSharingResult] = useState(false);
   const [startDialogMode, setStartDialogMode] = useState<StartDialogMode>(null);
   const [startTimeMode, setStartTimeMode] = useState<StartTimeMode>("now");
+  const [startDateValue, setStartDateValue] = useState(() => getDateValue(new Date().toISOString()));
   const [startTimeValue, setStartTimeValue] = useState(() => getClockValue(new Date().toISOString()));
   const [startTimeError, setStartTimeError] = useState<string | null>(null);
   const [pendingStartAdjustment, setPendingStartAdjustment] = useState<PendingStartAdjustment | null>(null);
@@ -463,13 +489,13 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
       };
     }
 
-    const startedAt = resolveManualStartTimeFromClock(startTimeValue, new Date());
+    const startedAt = resolveManualStartTimeFromDraft(startDateValue, startTimeValue);
 
     if (!startedAt) {
       return {
         startedAt: null,
         backdatedMinutes: 0,
-        error: "Choose a valid start time.",
+        error: "Use a valid date and 24-hour start time.",
       };
     }
 
@@ -664,6 +690,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     setStartDialogMode(mode);
     setStartTimeError(null);
     setStartTimeMode(mode === "edit" ? "earlier" : "now");
+    setStartDateValue(getDateValue(mode === "edit" ? activeSession?.startedAt : new Date().toISOString()));
     setStartTimeValue(getClockValue(mode === "edit" ? activeSession?.startedAt : new Date().toISOString()));
   }
 
@@ -674,6 +701,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     setStartDialogMode("start");
     setStartTimeError(null);
     setStartTimeMode("now");
+    setStartDateValue(getDateValue(new Date().toISOString()));
     setStartTimeValue(getClockValue(new Date().toISOString()));
   }
 
@@ -687,6 +715,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     const startedAt = new Date(Date.now() - minutes * 60000).toISOString();
 
     setStartTimeMode("earlier");
+    setStartDateValue(getDateValue(startedAt));
     setStartTimeValue(getClockValue(startedAt));
     setStartTimeError(null);
   }
@@ -698,7 +727,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     }
 
     if (plannedMinutes > MAX_PUBLIC_FAST_MINUTES) {
-      toast.error("FastTrack supports planned windows up to 18 hours for this beta.");
+      toast.error("FastTrack supports planned windows up to 24 hours.");
       return;
     }
 
@@ -1002,7 +1031,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
             <div className="premium-rail grid grid-cols-3 gap-2 rounded-[1.35rem] p-2 text-center">
               {[
                 { label: "Core goals", value: "12-16h" },
-                { label: "Cautious max", value: "18h" },
+                { label: "Extended max", value: "24h" },
                 { label: "Saved here", value: "Local" },
               ].map((item) => (
                 <div key={item.label} className="rounded-2xl px-2 py-3">
@@ -1146,24 +1175,38 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
 
               {startTimeMode === "earlier" ? (
                 <div className="space-y-2">
-                  <label className="text-xs uppercase tracking-[0.24em] text-muted-foreground" htmlFor="start-time">
-                    Start time
-                  </label>
-                  <Input
-                    id="start-time"
-                    type="text"
-                    enterKeyHint="done"
-                    inputMode="numeric"
-                    maxLength={5}
-                    pattern="[0-9:]*"
-                    placeholder="14:00"
-                    value={startTimeValue}
-                    onChange={(event) => {
-                      setStartTimeValue(event.target.value.replace(/[^\d:]/g, "").slice(0, 5));
-                      setStartTimeError(null);
-                    }}
-                  />
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <label className="text-xs uppercase tracking-[0.24em] text-muted-foreground" htmlFor="start-date">
+                        Start date
+                      </label>
+                      <Input
+                        id="start-date"
+                        type="date"
+                        value={startDateValue}
+                        onChange={(event) => {
+                          setStartDateValue(event.target.value);
+                          setStartTimeError(null);
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs uppercase tracking-[0.24em] text-muted-foreground" htmlFor="start-time">
+                        Start time
+                      </label>
+                      <Input
+                        id="start-time"
+                        type="time"
+                        enterKeyHint="done"
+                        value={startTimeValue}
+                        onChange={(event) => {
+                          setStartTimeValue(event.target.value);
+                          setStartTimeError(null);
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
                     {QUICK_BACKDATE_OPTIONS.map((option) => (
                       <button
                         key={option.minutes}
@@ -1176,7 +1219,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                     ))}
                   </div>
                   <p className="text-sm leading-6 text-muted-foreground">
-                    Type a 24-hour time, or use a quick backdate. Then use the Start fast button below.
+                    Pick the date and 24-hour time, or use a quick backdate to fill them in.
                   </p>
                 </div>
               ) : null}

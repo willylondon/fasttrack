@@ -566,7 +566,7 @@ export async function updateProfileSettings(
 
 export async function startFast(userId: string, plannedMinutes: number, startedAt?: string | null) {
   if (plannedMinutes < MIN_PUBLIC_FAST_MINUTES || plannedMinutes > MAX_PUBLIC_FAST_MINUTES) {
-    throw new Error("FastTrack supports planned windows from 12 to 18 hours for this beta.");
+    throw new Error("FastTrack supports planned windows from 12 to 24 hours.");
   }
 
   const supabase = createAdminClient();

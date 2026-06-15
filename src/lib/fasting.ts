@@ -400,12 +400,15 @@ export const FASTING_PRESETS = [
   { label: "12h", minutes: 12 * 60 },
   { label: "14h", minutes: 14 * 60 },
   { label: "16h", minutes: 16 * 60 },
-  { label: "18h cautious max", minutes: 18 * 60 },
+  { label: "18h", minutes: 18 * 60 },
+  { label: "20h", minutes: 20 * 60 },
+  { label: "22h", minutes: 22 * 60 },
+  { label: "24h extended max", minutes: 24 * 60 },
 ] as const;
 
 export const MIN_PUBLIC_FAST_MINUTES = 12 * 60;
-export const MAX_PUBLIC_FAST_MINUTES = 18 * 60;
-export const MAX_MANUAL_START_BACKDATE_MINUTES = 12 * 60;
+export const MAX_PUBLIC_FAST_MINUTES = 24 * 60;
+export const MAX_MANUAL_START_BACKDATE_MINUTES = 24 * 60;
 export const MANUAL_START_CONFIRM_MINUTES = 4 * 60;
 
 export const EMPTY_DASHBOARD_DATA: DashboardData = {
@@ -567,7 +570,7 @@ export function validateManualStartTimestamp(
     return {
       valid: false as const,
       backdatedMinutes,
-      message: "Start time can only be adjusted within the last 12 hours.",
+      message: "Start time can only be adjusted within the last 24 hours.",
     };
   }
 
