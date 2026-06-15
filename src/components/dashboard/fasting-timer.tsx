@@ -189,6 +189,30 @@ function getDateValue(value: string | null | undefined) {
   return format(new Date(value ?? Date.now()), "yyyy-MM-dd");
 }
 
+function formatDateDraft(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+
+  if (digits.length <= 4) {
+    return digits;
+  }
+
+  if (digits.length <= 6) {
+    return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+  }
+
+  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
+}
+
+function formatTimeDraft(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 4);
+
+  if (digits.length <= 2) {
+    return digits;
+  }
+
+  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+}
+
 function resolveManualStartTimeFromDraft(dateValue: string, timeValue: string) {
   const dateMatch = /^\d{4}-\d{2}-\d{2}$/.test(dateValue);
   const timeMatch = /^([01]\d|2[0-3]):([0-5]\d)$/.test(timeValue);
@@ -1182,10 +1206,14 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                       </label>
                       <Input
                         id="start-date"
-                        type="date"
+                        autoComplete="off"
+                        enterKeyHint="next"
+                        inputMode="numeric"
+                        maxLength={10}
+                        placeholder="2026-06-15"
                         value={startDateValue}
                         onChange={(event) => {
-                          setStartDateValue(event.target.value);
+                          setStartDateValue(formatDateDraft(event.target.value));
                           setStartTimeError(null);
                         }}
                       />
@@ -1196,11 +1224,14 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                       </label>
                       <Input
                         id="start-time"
-                        type="time"
+                        autoComplete="off"
                         enterKeyHint="done"
+                        inputMode="numeric"
+                        maxLength={5}
+                        placeholder="18:30"
                         value={startTimeValue}
                         onChange={(event) => {
-                          setStartTimeValue(event.target.value);
+                          setStartTimeValue(formatTimeDraft(event.target.value));
                           setStartTimeError(null);
                         }}
                       />
