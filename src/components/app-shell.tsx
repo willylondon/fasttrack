@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Session } from "next-auth";
 import { BarChart3, CalendarDays, Home, Trophy, Users } from "lucide-react";
 
+import { SignInDialog } from "@/components/auth/sign-in-dialog";
 import { AuthButton } from "@/components/auth/auth-button";
 import { BrandMark } from "@/components/brand-mark";
 import { MobileNav } from "@/components/layout/mobile-nav";
@@ -13,7 +14,7 @@ import { cn } from "@/lib/utils";
 
 type AppShellProps = {
   children: React.ReactNode;
-  currentPath: "/" | "/history" | "/feed" | "/friends" | "/leaderboard" | "/profile" | "/challenges" | `/challenges/${string}`;
+  currentPath: string;
   description: string;
   providers: {
     google: boolean;
@@ -57,6 +58,7 @@ export async function AppShell({
 }: AppShellProps) {
   const primaryPath = getPrimaryPath(currentPath);
   const profile = session?.user?.id ? await getProfileById(session.user.id) : null;
+  const showGuestBanner = !session?.user && currentPath !== "/privacy" && currentPath !== "/terms";
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -111,11 +113,51 @@ export async function AppShell({
         </header>
         <div className="mt-4 grid gap-4">
           <OfflineNotice />
+          {showGuestBanner ? (
+            <div className="glass-soft rounded-[1.5rem] border border-primary/15 px-4 py-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-2">
+                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Guest mode</p>
+                  <p className="text-sm leading-6 text-foreground">
+                    Your fasting progress is saved only on this device until you sign in.
+                  </p>
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    Review the{" "}
+                    <Link className="underline underline-offset-4 hover:text-foreground" href="/privacy">
+                      Privacy Policy
+                    </Link>{" "}
+                    and{" "}
+                    <Link className="underline underline-offset-4 hover:text-foreground" href="/terms">
+                      Terms
+                    </Link>
+                    .
+                  </p>
+                </div>
+                <SignInDialog
+                  buttonClassName="w-full sm:w-auto"
+                  buttonLabel="Sign in to sync"
+                  providers={providers}
+                  variant="secondary"
+                />
+              </div>
+            </div>
+          ) : null}
         </div>
         <main className="flex-1 pt-5 pb-[calc(env(safe-area-inset-bottom)+7.5rem)] sm:py-7 lg:pb-8">{children}</main>
         <div className="pb-[calc(env(safe-area-inset-bottom)+7.5rem)] lg:pb-6">
           <InstallPrompt currentPath={currentPath} />
         </div>
+        <footer className="pb-[calc(env(safe-area-inset-bottom)+1.5rem)] text-xs text-muted-foreground lg:pb-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/privacy" className="transition-colors hover:text-foreground">
+              Privacy
+            </Link>
+            <span>•</span>
+            <Link href="/terms" className="transition-colors hover:text-foreground">
+              Terms
+            </Link>
+          </div>
+        </footer>
       </div>
       <MobileNav currentPath={currentPath} />
     </div>

@@ -6,15 +6,7 @@ import { Download, Smartphone, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type InstallPromptProps = {
-  currentPath:
-    | "/"
-    | "/history"
-    | "/feed"
-    | "/friends"
-    | "/leaderboard"
-    | "/profile"
-    | "/challenges"
-    | `/challenges/${string}`;
+  currentPath: string;
 };
 
 type BeforeInstallPromptEvent = Event & {

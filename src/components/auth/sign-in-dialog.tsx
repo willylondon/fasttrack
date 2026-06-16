@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { signIn } from "next-auth/react";
 import { CircleUserRound, Globe2 } from "lucide-react";
@@ -41,11 +42,27 @@ export function SignInDialog({
 
   const hasAnyProvider = providers.google || providers.github;
 
+  const resolveCallbackUrl = () => {
+    if (typeof window === "undefined") {
+      return "/";
+    }
+
+    const currentUrl = new URL(window.location.href);
+    const redirectedCallback = currentUrl.searchParams.get("callbackUrl");
+
+    if (redirectedCallback?.startsWith("/")) {
+      return redirectedCallback;
+    }
+
+    const currentPath = `${currentUrl.pathname}${currentUrl.search}`;
+    return currentPath || "/";
+  };
+
   const handleSignIn = (provider: "google" | "github") => {
     setPendingProvider(provider);
     window.sessionStorage.setItem(`${LOCAL_DASHBOARD_STORAGE_KEY}:sync-after-sign-in`, "true");
     startTransition(async () => {
-      await signIn(provider, { callbackUrl: "/" });
+      await signIn(provider, { callbackUrl: resolveCallbackUrl() });
       setPendingProvider(null);
     });
   };
@@ -90,9 +107,22 @@ export function SignInDialog({
             ) : null}
           </div>
           <DialogFooter className="border-t border-border/70 bg-muted/30 px-6 py-4">
-            <p className="w-full text-xs text-muted-foreground">
-              Choose the account you want to use for streaks, history, friends, and saved progress.
-            </p>
+            <div className="w-full space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Choose the account you want to use for streaks, history, friends, and saved progress.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                By continuing, you agree to the{" "}
+                <Link className="underline underline-offset-4 hover:text-foreground" href="/terms">
+                  Terms
+                </Link>{" "}
+                and{" "}
+                <Link className="underline underline-offset-4 hover:text-foreground" href="/privacy">
+                  Privacy Policy
+                </Link>
+                .
+              </p>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

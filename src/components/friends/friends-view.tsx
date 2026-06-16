@@ -36,7 +36,7 @@ type FriendsViewProps = {
 const searchSchema = z
   .string()
   .trim()
-  .min(3, "Use at least 3 characters to search by name or email.");
+  .min(3, "Use at least 3 characters to search by display name.");
 
 function getInitials(value?: string | null) {
   if (!value) {
@@ -143,8 +143,8 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
     }
   }
 
-  async function addFriend(email: string) {
-    setPendingActionId(email);
+  async function addFriend(targetUserId: string) {
+    setPendingActionId(targetUserId);
 
     try {
       const response = await fetch("/api/friends", {
@@ -152,7 +152,7 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ targetUserId }),
       });
 
       if (!response.ok) {
@@ -160,7 +160,7 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
       }
 
       await refreshFriends();
-      setSearchResults((current) => current.filter((result) => result.email !== email));
+      setSearchResults((current) => current.filter((result) => result.id !== targetUserId));
       toast.success("Friend request sent.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to send request.");
@@ -225,7 +225,7 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
               <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">What you can do</p>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 {[
-                  "Search by name or email and send private invites.",
+                  "Search by display name and send private invites.",
                   "See incoming requests and manage your circle in one place.",
                 ].map((item) => (
                   <div key={item} className="rounded-[1.2rem] border border-white/8 bg-white/5 px-4 py-4 text-sm text-muted-foreground">
@@ -253,7 +253,7 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
             </div>
             <div>
               <CardTitle>Find Friends</CardTitle>
-              <CardDescription>Search FastTrack profiles by name or email and invite the people you trust.</CardDescription>
+              <CardDescription>Search FastTrack profiles by display name and invite the people you trust.</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -268,7 +268,7 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                 }
               }}
               aria-label="Search for friends"
-              placeholder="Search by name or email"
+              placeholder="Search by display name"
               value={query}
             />
             <Button
@@ -294,14 +294,14 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                     <div>
                       <p className="text-sm font-medium text-foreground">{result.displayName}</p>
                       <p className="text-xs text-muted-foreground">
-                        {result.email ?? "FastTrack member"} • {result.currentStreak} day streak
+                        FastTrack member • {result.currentStreak} day streak
                       </p>
                     </div>
                   </div>
                   <Button
                     className="w-full rounded-xl sm:w-auto"
-                    disabled={pendingActionId === result.email}
-                    onClick={() => result.email && void addFriend(result.email)}
+                    disabled={pendingActionId === result.id}
+                    onClick={() => void addFriend(result.id)}
                     size="sm"
                   >
                     <UserPlus className="mr-2 size-4" />
@@ -311,7 +311,7 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
               ))
             ) : (
               <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/60 px-5 py-10 text-center text-sm text-muted-foreground">
-                Search results will appear here once you look up a name or email.
+                Search results will appear here once you look up a display name.
               </div>
             )}
           </div>
@@ -613,7 +613,7 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
             <EmptyState
               eyebrow="Getting started"
               title="Build your fasting circle."
-              description="Search for a friend by name or email, send an invite, and keep your habit grounded in steady accountability."
+              description="Search for a friend by display name, send an invite, and keep your habit grounded in steady accountability."
             />
           )}
         </CardContent>

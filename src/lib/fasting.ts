@@ -157,7 +157,6 @@ export type FriendSearchResult = {
   id: string;
   displayName: string | null;
   avatarUrl: string | null;
-  email: string | null;
   currentStreak: number;
 };
 
@@ -441,7 +440,7 @@ export function mapProfile(record: DatabaseProfile): ProfileSummary {
     level: record.level ?? 1,
     highestStageReached: record.highest_stage_reached ?? 0,
     friendCount: record.friend_count ?? 0,
-    shareLiveStatus: record.share_live_status ?? true,
+    shareLiveStatus: record.share_live_status ?? false,
     createdAt: record.created_at,
   };
 }

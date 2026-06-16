@@ -4,9 +4,9 @@ import { FastingTimer } from "@/components/dashboard/fasting-timer";
 import { getDashboardData } from "@/lib/fasting-data";
 
 export const metadata = {
-  title: "FastTrack — Dashboard",
+  title: "FastTrack — Fasting Window Tracker With Accountability",
   description:
-    "Track your fasting window, keep your streak steady, and save progress across your account.",
+    "Track fasting windows, keep progress locally or in your account, and stay accountable with friends.",
 };
 
 export default async function Home() {

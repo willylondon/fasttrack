@@ -2,12 +2,23 @@ import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
 
-const PUBLIC_PATHS = new Set(["/"]);
+const PUBLIC_PATHS = new Set([
+  "/",
+  "/history",
+  "/feed",
+  "/friends",
+  "/leaderboard",
+  "/profile",
+  "/challenges",
+  "/privacy",
+  "/terms",
+]);
 
 export default auth((request) => {
   const { nextUrl } = request;
+  const isPublicChallengePath = nextUrl.pathname.startsWith("/challenges/");
 
-  if (PUBLIC_PATHS.has(nextUrl.pathname) || request.auth) {
+  if (PUBLIC_PATHS.has(nextUrl.pathname) || isPublicChallengePath || request.auth) {
     return NextResponse.next();
   }
 

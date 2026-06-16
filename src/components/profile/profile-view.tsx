@@ -417,6 +417,9 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
                 : "Live sharing unavailable"}
             </Button>
           </div>
+          <p className="text-xs leading-5 text-muted-foreground">
+            Live fasting visibility is off by default. Turn it on only if you want friends to see when you are actively in a fasting window.
+          </p>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="glass-soft rounded-[1.5rem] p-4">

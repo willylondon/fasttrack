@@ -6,7 +6,7 @@ import { BarChart3, CalendarDays, Home, Trophy, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type MobileNavProps = {
-  currentPath: "/" | "/history" | "/feed" | "/friends" | "/leaderboard" | "/profile" | "/challenges" | `/challenges/${string}`;
+  currentPath: string;
 };
 
 const navItems = [

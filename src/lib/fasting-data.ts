@@ -72,6 +72,15 @@ const ENCOURAGEMENT_COMMENT_COLUMNS = "id,author_id,recipient_id,body,context,cr
 const APP_NOTIFICATION_COLUMNS = "id,user_id,actor_id,notification_type,title,body,href,read_at,created_at";
 const DAILY_CHECKIN_COLUMNS = "id,user_id,session_id,energy,mood,hunger,sleep_quality,note,created_at";
 const MAX_ENCOURAGEMENT_BODY_LENGTH = 180;
+const EMPTY_CHALLENGES_LIST_DATA = {
+  active: [],
+  joinable: [],
+  past: [],
+} satisfies ChallengesListData;
+
+function hasSupabaseServerEnv() {
+  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+}
 
 export async function getCurrentUserId() {
   const session = await auth();
@@ -267,7 +276,7 @@ export async function getProfilePageData(userId: string | null | undefined): Pro
       recentActivity: [],
       notifications: [],
       notificationsEnabled: false,
-      liveStatusSharingEnabled: true,
+      liveStatusSharingEnabled: false,
       liveStatusSharingSupported: false,
     };
   }
@@ -952,15 +961,13 @@ export async function recordMilestone(userId: string, sessionId: string, stageIn
   return stage;
 }
 
-export async function createFriendRequest(userId: string, email: string) {
+export async function createFriendRequest(userId: string, targetUserId: string) {
   const supabase = createAdminClient();
-  const normalizedEmail = email.trim().toLowerCase();
-
   const targetResult = await supabase
     .schema("next_auth")
     .from("users")
     .select("id,email,name,image")
-    .eq("email", normalizedEmail)
+    .eq("id", targetUserId)
     .maybeSingle();
 
   if (targetResult.error) {
@@ -968,7 +975,7 @@ export async function createFriendRequest(userId: string, email: string) {
   }
 
   if (!targetResult.data) {
-    throw new Error("No FastTrack account was found for that email.");
+    throw new Error("No FastTrack account was found for that member.");
   }
 
   if (targetResult.data.id === userId) {
@@ -1083,10 +1090,9 @@ export async function searchProfiles(userId: string, query: string) {
   }
 
   const candidateUsers = await supabase
-    .schema("next_auth")
-    .from("users")
-    .select("id,email,name,image")
-    .or(`email.ilike.%${normalizedQuery}%,name.ilike.%${normalizedQuery}%`)
+    .from("profiles")
+    .select("id,display_name,avatar_url,current_streak")
+    .ilike("display_name", `%${normalizedQuery}%`)
     .limit(12);
 
   if (candidateUsers.error) {
@@ -1101,21 +1107,14 @@ export async function searchProfiles(userId: string, query: string) {
     return [];
   }
 
-  const profilesById = await getProfilesById(filteredIds, true);
-
   return (candidateUsers.data ?? [])
     .filter((user) => filteredIds.includes(user.id))
-    .map((user) => {
-      const profile = profilesById.get(user.id);
-
-      return {
-        id: user.id,
-        displayName: profile?.displayName ?? user.name ?? user.email ?? "FastTrack user",
-        avatarUrl: profile?.avatarUrl ?? user.image ?? null,
-        email: user.email,
-        currentStreak: profile?.currentStreak ?? 0,
-      } satisfies FriendSearchResult;
-    });
+    .map((user) => ({
+      id: user.id,
+      displayName: user.display_name ?? "FastTrack member",
+      avatarUrl: user.avatar_url ?? null,
+      currentStreak: user.current_streak ?? 0,
+    }) satisfies FriendSearchResult);
 }
 
 export async function getEncouragementComments(
@@ -1604,7 +1603,7 @@ async function getProfilesById(userIds: string[], includeStreaks = false) {
       avatarUrl: profile.avatar_url,
       currentStreak: "current_streak" in profile ? profile.current_streak ?? 0 : undefined,
       longestStreak: "longest_streak" in profile ? profile.longest_streak ?? 0 : undefined,
-      shareLiveStatus: profile.share_live_status ?? true,
+      shareLiveStatus: profile.share_live_status ?? false,
     });
   }
 
@@ -2002,6 +2001,10 @@ async function computeChallengeProgress(userId: string, challenge: DatabaseChall
 }
 
 export async function getChallengesListData(userId: string | null | undefined): Promise<ChallengesListData> {
+  if (!hasSupabaseServerEnv()) {
+    return EMPTY_CHALLENGES_LIST_DATA;
+  }
+
   const supabase = createAdminClient();
   const now = new Date().toISOString();
 
@@ -2065,6 +2068,10 @@ export async function getChallengesListData(userId: string | null | undefined): 
 }
 
 export async function getChallengeDetail(challengeId: string, userId: string | null | undefined): Promise<ChallengeDetail | null> {
+  if (!hasSupabaseServerEnv()) {
+    return null;
+  }
+
   const supabase = createAdminClient();
 
   const [challengeResult, participantResult] = await Promise.all([

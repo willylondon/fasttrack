@@ -5,7 +5,7 @@ import { getErrorMessage, getErrorStatus, getZodMessage, jsonMessage, readJsonBo
 import { createFriendRequest, getCurrentUserId, getFriendsPageData } from "@/lib/fasting-data";
 
 const createFriendSchema = z.object({
-  email: z.string().email(),
+  targetUserId: z.string().min(1, "Choose a FastTrack member to invite."),
 });
 
 export async function GET() {
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const friendshipId = await createFriendRequest(userId, parsed.data.email);
+    const friendshipId = await createFriendRequest(userId, parsed.data.targetUserId);
 
     return NextResponse.json({ friendshipId });
   } catch (error) {

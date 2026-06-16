@@ -15,7 +15,7 @@ export default async function FriendsPage() {
   return (
     <AppShell
       currentPath="/friends"
-      description="Search by name or email, manage requests, and keep your accountability circle close."
+      description="Search by display name, manage requests, and keep your accountability circle close."
       providers={authProviders}
       session={session}
       title="Build your fasting circle."
