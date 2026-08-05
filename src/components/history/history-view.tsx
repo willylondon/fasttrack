@@ -628,12 +628,12 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
                             End time
                           </span>
                           <Input
+                            type="time"
                             enterKeyHint="done"
-                            inputMode="numeric"
-                            maxLength={5}
+                            step={60}
                             onChange={(event) =>
                               updateEndTimeDraft(session.id, {
-                                time: event.target.value.replace(/[^\d:]/g, "").slice(0, 5),
+                                time: event.target.value,
                               })
                             }
                             placeholder="18:30"

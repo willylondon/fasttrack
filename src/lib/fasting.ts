@@ -407,7 +407,7 @@ export const FASTING_PRESETS = [
 
 export const MIN_PUBLIC_FAST_MINUTES = 12 * 60;
 export const MAX_PUBLIC_FAST_MINUTES = 24 * 60;
-export const MAX_MANUAL_START_BACKDATE_MINUTES = 24 * 60;
+export const MAX_MANUAL_START_BACKDATE_MINUTES = 7 * 24 * 60;
 export const MANUAL_START_CONFIRM_MINUTES = 4 * 60;
 
 export const EMPTY_DASHBOARD_DATA: DashboardData = {
@@ -569,13 +569,50 @@ export function validateManualStartTimestamp(
     return {
       valid: false as const,
       backdatedMinutes,
-      message: "Start time can only be adjusted within the last 24 hours.",
+      message: `Start time can only be adjusted within the last ${Math.round(maxBackdateMinutes / 1440)} days.`,
     };
   }
 
   return {
     valid: true as const,
     backdatedMinutes,
+    message: null,
+  };
+}
+
+export function validateFastEndTimestamp(startedAt: string, endedAt: string, now = Date.now()) {
+  const startedAtMs = Date.parse(startedAt);
+  const endedAtMs = Date.parse(endedAt);
+
+  if (!Number.isFinite(startedAtMs) || !Number.isFinite(endedAtMs)) {
+    return {
+      valid: false as const,
+      durationMinutes: 0,
+      message: "Choose a valid end date and time.",
+    };
+  }
+
+  if (endedAtMs > now) {
+    return {
+      valid: false as const,
+      durationMinutes: 0,
+      message: "End time cannot be in the future.",
+    };
+  }
+
+  const durationMinutes = Math.round((endedAtMs - startedAtMs) / 60000);
+
+  if (durationMinutes < 1) {
+    return {
+      valid: false as const,
+      durationMinutes,
+      message: "End time must be at least 1 minute after the start time.",
+    };
+  }
+
+  return {
+    valid: true as const,
+    durationMinutes,
     message: null,
   };
 }

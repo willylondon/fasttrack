@@ -148,14 +148,19 @@ export function EncouragementDialog({ target }: EncouragementDialogProps) {
                   </Button>
                 ))}
               </div>
+              <label className="text-xs font-medium text-foreground" htmlFor={`encouragement-${target.userId}`}>
+                Encouragement message
+              </label>
               <Textarea
+                id={`encouragement-${target.userId}`}
+                aria-describedby={`encouragement-count-${target.userId}`}
                 value={message}
                 maxLength={MAX_ENCOURAGEMENT_LENGTH}
                 placeholder="Write something encouraging..."
                 onChange={(event) => setMessage(event.target.value)}
               />
               <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                <span>{message.length}/{MAX_ENCOURAGEMENT_LENGTH}</span>
+                <span id={`encouragement-count-${target.userId}`}>{message.length}/{MAX_ENCOURAGEMENT_LENGTH}</span>
                 <Button onClick={handleSubmit} disabled={sending} size="sm" className="gap-2">
                   {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
                   Send

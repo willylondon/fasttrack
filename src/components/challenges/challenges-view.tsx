@@ -276,8 +276,8 @@ function CreateChallengeDialog({
         </DialogHeader>
         <div className="grid gap-4 py-2">
           <div className="grid gap-2">
-            <label className="text-xs font-medium text-foreground">Visibility</label>
-            <div className="grid grid-cols-2 gap-2">
+            <p className="text-xs font-medium text-foreground" id="challenge-visibility-label">Visibility</p>
+            <div aria-labelledby="challenge-visibility-label" className="grid grid-cols-2 gap-2" role="group">
               {[
                 {
                   value: "circle" as const,
@@ -318,17 +318,20 @@ function CreateChallengeDialog({
             </div>
           </div>
           <div className="grid gap-2">
-            <label className="text-xs font-medium text-foreground">Title</label>
+            <label className="text-xs font-medium text-foreground" htmlFor="challenge-title">Title</label>
             <Input
+              id="challenge-title"
+              aria-describedby={errors.title ? "challenge-title-error" : undefined}
+              aria-invalid={Boolean(errors.title)}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. 7-Day Streak Challenge"
               maxLength={80}
             />
-            {errors.title && <p className="text-xs text-red-400">{errors.title}</p>}
+            {errors.title && <p className="text-xs text-red-400" id="challenge-title-error" role="alert">{errors.title}</p>}
           </div>
           <div className="grid gap-2">
-            <label className="text-xs font-medium text-foreground">Type</label>
+            <label className="text-xs font-medium text-foreground" htmlFor="challenge-type">Type</label>
             <Select
               value={challengeType}
               onValueChange={(value) => {
@@ -340,7 +343,7 @@ function CreateChallengeDialog({
                 setTargetValue("");
               }}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full" id="challenge-type" aria-describedby="challenge-type-help">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -351,21 +354,24 @@ function CreateChallengeDialog({
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-[10px] text-muted-foreground">{TYPE_HELP[challengeType]}</p>
+            <p className="text-[10px] text-muted-foreground" id="challenge-type-help">{TYPE_HELP[challengeType]}</p>
           </div>
           <div className="grid gap-2">
-            <label className="text-xs font-medium text-foreground">Target ({TYPE_UNITS[challengeType]})</label>
+            <label className="text-xs font-medium text-foreground" htmlFor="challenge-target">Target ({TYPE_UNITS[challengeType]})</label>
             <Input
+              id="challenge-target"
+              aria-describedby={errors.targetValue ? "challenge-target-error" : undefined}
+              aria-invalid={Boolean(errors.targetValue)}
               type="number"
               min={1}
               value={targetValue}
               onChange={(e) => setTargetValue(e.target.value)}
               placeholder={challengeType === "total_hours" ? "e.g. 20" : "e.g. 7"}
             />
-            {errors.targetValue && <p className="text-xs text-red-400">{errors.targetValue}</p>}
+            {errors.targetValue && <p className="text-xs text-red-400" id="challenge-target-error" role="alert">{errors.targetValue}</p>}
           </div>
           <div className="grid gap-2">
-            <label className="text-xs font-medium text-foreground">Duration</label>
+            <label className="text-xs font-medium text-foreground" htmlFor="challenge-duration">Duration</label>
             <Select
               value={durationDays}
               onValueChange={(value) => {
@@ -376,7 +382,7 @@ function CreateChallengeDialog({
                 setDurationDays(value);
               }}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full" id="challenge-duration">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -387,8 +393,9 @@ function CreateChallengeDialog({
             </Select>
           </div>
           <div className="grid gap-2">
-            <label className="text-xs font-medium text-foreground">Description (optional)</label>
+            <label className="text-xs font-medium text-foreground" htmlFor="challenge-description">Description (optional)</label>
             <Textarea
+              id="challenge-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="What's this challenge about?"

@@ -157,3 +157,43 @@ test("buildPostSyncLocalDashboardData returns null when no local history remains
 
   assert.equal(result, null);
 });
+
+test("buildPostSyncLocalDashboardData clears only sessions confirmed by the server", () => {
+  const source = normalizeLocalDashboardData({
+    activeSession: null,
+    sessions: [
+      {
+        id: "synced-session",
+        userId: "local-user",
+        startedAt: "2026-05-29T10:00:00.000Z",
+        endedAt: "2026-05-29T20:00:00.000Z",
+        durationMinutes: 600,
+        plannedMinutes: 960,
+        status: "completed",
+        notes: null,
+        createdAt: "2026-05-29T10:00:00.000Z",
+        stageReached: 2,
+      },
+      {
+        id: "retry-session",
+        userId: "local-user",
+        startedAt: "2026-05-30T10:00:00.000Z",
+        endedAt: "2026-05-30T20:00:00.000Z",
+        durationMinutes: 600,
+        plannedMinutes: 960,
+        status: "completed",
+        notes: null,
+        createdAt: "2026-05-30T10:00:00.000Z",
+        stageReached: 2,
+      },
+    ],
+  });
+
+  const result = buildPostSyncLocalDashboardData(source, {
+    activeSessionSynced: false,
+    completedSessionIds: ["synced-session"],
+  });
+
+  assert.equal(result?.sessions.length, 1);
+  assert.equal(result?.sessions[0]?.id, "retry-session");
+});

@@ -22,6 +22,7 @@ import {
   mapFeedEvent,
   mapProfile,
   validateManualStartTimestamp,
+  validateFastEndTimestamp,
 } from "@/lib/fasting";
 import type {
   BadgeDefinition,
@@ -759,7 +760,8 @@ export async function updateFast(
   userId: string,
   sessionId: string,
   action: "complete" | "cancel",
-  notes?: string | null
+  notes?: string | null,
+  completedAt?: string | null
 ) {
   const supabase = createAdminClient();
   const sessionResult = await supabase
@@ -781,20 +783,21 @@ export async function updateFast(
     throw new Error("Only active fasts can be updated.");
   }
 
-  const endedAt = new Date().toISOString();
-  const durationMinutes = Math.max(
-    0,
-    Math.round((Date.parse(endedAt) - Date.parse(sessionResult.data.started_at)) / 60000)
-  );
+  const endedAt = action === "complete" && completedAt ? completedAt : new Date().toISOString();
+  const endTimeValidation = validateFastEndTimestamp(sessionResult.data.started_at, endedAt);
+  const durationMinutes = endTimeValidation.durationMinutes;
 
-  if (action === "complete" && durationMinutes < 1) {
-    throw new Error("Fast must run for at least 1 minute before it can be completed. Cancel it instead if this was a mistake.");
+  if (!endTimeValidation.valid) {
+    if (action === "complete") {
+      throw new Error(endTimeValidation.message);
+    }
+
+    if (Date.parse(endedAt) < Date.parse(sessionResult.data.started_at)) {
+      throw new Error("Cancel time cannot be before the start time.");
+    }
   }
 
-  const finalStageReached = Math.max(
-    sessionResult.data.stage_reached ?? 0,
-    getStageIndexForMinutes(durationMinutes)
-  );
+  const finalStageReached = getStageIndexForMinutes(Math.max(0, durationMinutes));
   const nextStatus: FastStatus = action === "complete" ? "completed" : "cancelled";
 
   // Capture previous profile state before fast_sessions_sync_profile_fast_stats trigger executes
@@ -803,8 +806,8 @@ export async function updateFast(
   const updateResult = await supabase
     .from("fast_sessions")
     .update({
-      ended_at: endedAt,
-      duration_minutes: durationMinutes,
+      ended_at: new Date(endedAt).toISOString(),
+      duration_minutes: Math.max(0, durationMinutes),
       notes: normalizeOptionalText(notes),
       status: nextStatus,
       stage_reached: finalStageReached,
@@ -892,6 +895,70 @@ export async function updateFast(
   return {
     session: mapFastSession(updateResult.data),
     gamification,
+  };
+}
+
+export type LocalFastHistoryImport = {
+  sourceId: string;
+  startedAt: string;
+  endedAt: string;
+  plannedMinutes: number;
+  notes?: string | null;
+};
+
+export async function importLocalFastHistory(userId: string, sessions: LocalFastHistoryImport[]) {
+  if (!sessions.length) {
+    return { importedCount: 0, syncedSourceIds: [] as string[] };
+  }
+
+  const supabase = createAdminClient();
+  const sourceIds = sessions.map((session) => session.sourceId);
+  const existingResult = await supabase
+    .from("fast_sessions")
+    .select("import_key")
+    .eq("user_id", userId)
+    .in("import_key", sourceIds);
+
+  if (existingResult.error) {
+    throw existingResult.error;
+  }
+
+  const existingSourceIds = new Set(
+    (existingResult.data ?? [])
+      .map((session) => session.import_key)
+      .filter((sourceId): sourceId is string => typeof sourceId === "string")
+  );
+  const missingSessions = sessions.filter((session) => !existingSourceIds.has(session.sourceId));
+
+  if (missingSessions.length) {
+    const insertResult = await supabase.from("fast_sessions").insert(
+      missingSessions.map((session) => {
+        const durationMinutes = Math.round(
+          (Date.parse(session.endedAt) - Date.parse(session.startedAt)) / 60000
+        );
+
+        return {
+          user_id: userId,
+          started_at: session.startedAt,
+          ended_at: session.endedAt,
+          duration_minutes: durationMinutes,
+          duration_planned_minutes: session.plannedMinutes,
+          status: "completed",
+          notes: normalizeOptionalText(session.notes),
+          stage_reached: getStageIndexForMinutes(durationMinutes),
+          import_key: session.sourceId,
+        };
+      })
+    );
+
+    if (insertResult.error) {
+      throw insertResult.error;
+    }
+  }
+
+  return {
+    importedCount: missingSessions.length,
+    syncedSourceIds: sourceIds,
   };
 }
 

@@ -7,22 +7,27 @@ const supabaseOrigin = (() => {
     return "";
   }
 })();
+const isDevelopment = process.env.NODE_ENV === "development";
 
 const csp = [
   "default-src 'self'",
   "base-uri 'self'",
   "frame-ancestors 'none'",
   "object-src 'none'",
-  "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://va.vercel-scripts.com https://vercel.live",
+  `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""} https://va.vercel-scripts.com https://vercel.live`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   `connect-src 'self'${supabaseOrigin ? ` ${supabaseOrigin}` : ""} https://vitals.vercel-insights.com`,
   "font-src 'self' data:",
+  "manifest-src 'self'",
+  "worker-src 'self' blob:",
   "form-action 'self'",
+  ...(isDevelopment ? [] : ["upgrade-insecure-requests"]),
 ].join("; ");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  poweredByHeader: false,
   async headers() {
     return [
       {
@@ -48,6 +53,14 @@ const nextConfig = {
             key: "Content-Security-Policy",
             value: csp,
           },
+          ...(!isDevelopment
+            ? [
+                {
+                  key: "Strict-Transport-Security",
+                  value: "max-age=63072000; includeSubDomains; preload",
+                },
+              ]
+            : []),
         ],
       },
     ];

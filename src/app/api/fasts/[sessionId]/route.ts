@@ -3,11 +3,16 @@ import { z } from "zod";
 
 import { getErrorMessage, getErrorStatus, getZodMessage, jsonMessage, readJsonBody } from "@/lib/api-responses";
 import { getCurrentUserId, recordMilestone, updateFast, updateFastEndTime, updateFastStartTime } from "@/lib/fasting-data";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const updateFastSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("complete"),
     notes: z.string().max(600).optional().nullable(),
+    endedAt: z
+      .string()
+      .refine((value) => !Number.isNaN(Date.parse(value)), "Choose a valid end time.")
+      .optional(),
   }),
   z.object({
     action: z.literal("cancel"),
@@ -39,6 +44,15 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
   if (!userId) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const rateLimit = checkRateLimit(`fasts:update:${userId}`, 60, 60_000);
+
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { message: "Too many fasting updates. Try again shortly." },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+    );
   }
 
   const body = await readJsonBody(request);
@@ -74,7 +88,13 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       return NextResponse.json({ session });
     }
 
-    const result = await updateFast(userId, sessionId, payload.action, payload.notes);
+    const result = await updateFast(
+      userId,
+      sessionId,
+      payload.action,
+      payload.notes,
+      payload.action === "complete" ? payload.endedAt : undefined
+    );
 
     return NextResponse.json(result);
   } catch (error) {

@@ -5,6 +5,7 @@ import {
   FASTING_PRESETS,
   MAX_MANUAL_START_BACKDATE_MINUTES,
   MAX_PUBLIC_FAST_MINUTES,
+  validateFastEndTimestamp,
   validateManualStartTimestamp,
 } from "../src/lib/fasting.ts";
 
@@ -13,19 +14,44 @@ test("fasting presets include a 24-hour option", () => {
   assert.ok(FASTING_PRESETS.some((preset) => preset.minutes === 24 * 60));
 });
 
-test("manual start validation allows a full 24-hour backdate", () => {
+test("manual start validation allows a full seven-day correction window", () => {
   const now = Date.parse("2026-06-15T18:00:00.000Z");
-  const result = validateManualStartTimestamp("2026-06-14T18:00:00.000Z", now);
+  const result = validateManualStartTimestamp("2026-06-08T18:00:00.000Z", now);
 
-  assert.equal(MAX_MANUAL_START_BACKDATE_MINUTES, 24 * 60);
+  assert.equal(MAX_MANUAL_START_BACKDATE_MINUTES, 7 * 24 * 60);
   assert.equal(result.valid, true);
-  assert.equal(result.backdatedMinutes, 24 * 60);
+  assert.equal(result.backdatedMinutes, 7 * 24 * 60);
 });
 
-test("manual start validation rejects adjustments beyond 24 hours", () => {
+test("manual start validation rejects adjustments beyond seven days", () => {
   const now = Date.parse("2026-06-15T18:00:00.000Z");
-  const result = validateManualStartTimestamp("2026-06-14T17:59:00.000Z", now);
+  const result = validateManualStartTimestamp("2026-06-08T17:59:00.000Z", now);
 
   assert.equal(result.valid, false);
-  assert.equal(result.message, "Start time can only be adjusted within the last 24 hours.");
+  assert.equal(result.message, "Start time can only be adjusted within the last 7 days.");
+});
+
+test("a forgotten timer can be completed at its actual 16-hour end time", () => {
+  const now = Date.parse("2026-06-16T22:00:00.000Z");
+  const result = validateFastEndTimestamp(
+    "2026-06-15T18:00:00.000Z",
+    "2026-06-16T10:00:00.000Z",
+    now
+  );
+
+  assert.equal(result.valid, true);
+  assert.equal(result.durationMinutes, 16 * 60);
+});
+
+test("corrected end times cannot predate the fast or be in the future", () => {
+  const now = Date.parse("2026-06-16T22:00:00.000Z");
+
+  assert.equal(
+    validateFastEndTimestamp("2026-06-15T18:00:00.000Z", "2026-06-15T17:59:00.000Z", now).valid,
+    false
+  );
+  assert.equal(
+    validateFastEndTimestamp("2026-06-15T18:00:00.000Z", "2026-06-16T22:01:00.000Z", now).valid,
+    false
+  );
 });

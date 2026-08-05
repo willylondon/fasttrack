@@ -36,6 +36,7 @@ import {
   MANUAL_START_CONFIRM_MINUTES,
   MAX_MANUAL_START_BACKDATE_MINUTES,
   MAX_PUBLIC_FAST_MINUTES,
+  validateFastEndTimestamp,
   validateManualStartTimestamp,
 } from "@/lib/fasting";
 import { FASTING_STAGES, type FastingStage } from "@/lib/fasting-stages";
@@ -55,6 +56,7 @@ type FastingTimerProps = {
 
 type PendingAction = "complete" | "cancel" | null;
 type StartTimeMode = "now" | "earlier";
+type EndTimeMode = "now" | "earlier";
 type StartDialogMode = "start" | "edit" | null;
 type WindowOptionLabel = (typeof WINDOW_OPTIONS)[number]["label"];
 
@@ -140,6 +142,14 @@ const QUICK_BACKDATE_OPTIONS = [
   { label: "4h", minutes: 240 },
   { label: "12h", minutes: 720 },
   { label: "24h", minutes: 1440 },
+  { label: "2d", minutes: 2880 },
+  { label: "7d", minutes: 10080 },
+] as const;
+const QUICK_END_BACKDATE_OPTIONS = [
+  { label: "30m ago", minutes: 30 },
+  { label: "1h ago", minutes: 60 },
+  { label: "2h ago", minutes: 120 },
+  { label: "4h ago", minutes: 240 },
 ] as const;
 
 async function readApiError(response: Response) {
@@ -201,16 +211,6 @@ function formatDateDraft(value: string) {
   }
 
   return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
-}
-
-function formatTimeDraft(value: string) {
-  const digits = value.replace(/\D/g, "").slice(0, 4);
-
-  if (digits.length <= 2) {
-    return digits;
-  }
-
-  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
 }
 
 function resolveManualStartTimeFromDraft(dateValue: string, timeValue: string) {
@@ -292,7 +292,7 @@ function LiveTimerPanel({
   return (
     <>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)] lg:items-center">
-        <div className="order-1">
+        <div className="order-2 lg:order-1">
           <TimerRing
             active={Boolean(activeSession)}
             elapsedMinutes={elapsedMinutes}
@@ -312,7 +312,51 @@ function LiveTimerPanel({
           </div>
         </div>
 
-        <div className="order-2 space-y-4">
+        <div className="order-1 space-y-4 lg:order-2">
+          <div className="grid gap-3">
+            {!activeSession ? (
+              <Button
+                className="h-12 w-full text-base font-semibold text-white"
+                disabled={isMutatingFast}
+                onClick={() => onOpenStartTimeDialog("start")}
+                size="lg"
+              >
+                <Flag className="size-4" />
+                Start fast
+              </Button>
+            ) : (
+              <>
+                <Button
+                  className="h-12 w-full text-base font-semibold text-white"
+                  disabled={isMutatingFast}
+                  onClick={() => onPendingAction("complete")}
+                  size="lg"
+                >
+                  <Check className="size-4" />
+                  End fast
+                </Button>
+                <Button
+                  className="h-11 w-full"
+                  disabled={isMutatingFast}
+                  onClick={() => onOpenStartTimeDialog("edit")}
+                  size="lg"
+                  variant="outline"
+                >
+                  <PencilLine className="size-4" />
+                  Edit start time
+                </Button>
+                <button
+                  className="min-h-[44px] text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  disabled={isMutatingFast}
+                  onClick={() => onPendingAction("cancel")}
+                  type="button"
+                >
+                  Cancel fast
+                </button>
+              </>
+            )}
+          </div>
+
           {!activeSession ? (
             <div className="glass-soft rounded-[1.7rem] p-4 sm:p-5">
               <div className="space-y-3">
@@ -395,49 +439,6 @@ function LiveTimerPanel({
             <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-base">{hourlyCheckIn}</p>
           </div>
 
-          <div className="grid gap-3">
-            {!activeSession ? (
-              <Button
-                className="h-12 w-full text-base font-semibold text-white"
-                disabled={isMutatingFast}
-                onClick={() => onOpenStartTimeDialog("start")}
-                size="lg"
-              >
-                <Flag className="size-4" />
-                Start fast
-              </Button>
-            ) : (
-              <>
-                <Button
-                  className="h-12 w-full text-base font-semibold text-white"
-                  disabled={isMutatingFast}
-                  onClick={() => onPendingAction("complete")}
-                  size="lg"
-                >
-                  <Check className="size-4" />
-                  End fast
-                </Button>
-                <Button
-                  className="h-11 w-full"
-                  disabled={isMutatingFast}
-                  onClick={() => onOpenStartTimeDialog("edit")}
-                  size="lg"
-                  variant="outline"
-                >
-                  <PencilLine className="size-4" />
-                  Edit start time
-                </Button>
-                <button
-                  className="min-h-[44px] text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-                  disabled={isMutatingFast}
-                  onClick={() => onPendingAction("cancel")}
-                  type="button"
-                >
-                  Cancel fast
-                </button>
-              </>
-            )}
-          </div>
         </div>
       </div>
 
@@ -465,6 +466,11 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   const [startDateValue, setStartDateValue] = useState(() => getDateValue(new Date().toISOString()));
   const [startTimeValue, setStartTimeValue] = useState(() => getClockValue(new Date().toISOString()));
   const [startTimeError, setStartTimeError] = useState<string | null>(null);
+  const [endTimeMode, setEndTimeMode] = useState<EndTimeMode>("now");
+  const [endDateValue, setEndDateValue] = useState(() => getDateValue(new Date().toISOString()));
+  const [endTimeValue, setEndTimeValue] = useState(() => getClockValue(new Date().toISOString()));
+  const [endTimeError, setEndTimeError] = useState<string | null>(null);
+  const [endTimeOverride, setEndTimeOverride] = useState<string | null>(null);
   const [pendingStartAdjustment, setPendingStartAdjustment] = useState<PendingStartAdjustment | null>(null);
   const [safetyAcknowledged, setSafetyAcknowledged] = useState(false);
   const [safetyDialogOpen, setSafetyDialogOpen] = useState(false);
@@ -536,6 +542,32 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   const previewRemainingMinutes = Math.max(previewPlannedMinutes - previewElapsedMinutes, 0);
   const previewStage = getStageForMinutes(previewElapsedMinutes);
   const showExtendedWindowWarning = previewElapsedMinutes >= 18 * 60;
+  const selectedEndPreview = (() => {
+    if (pendingAction !== "complete" || !activeSession) {
+      return null;
+    }
+
+    const endedAt =
+      endTimeMode === "now"
+        ? new Date().toISOString()
+        : endTimeOverride ?? resolveManualStartTimeFromDraft(endDateValue, endTimeValue);
+
+    if (!endedAt) {
+      return {
+        endedAt: null,
+        durationMinutes: 0,
+        error: "Use a valid date and 24-hour end time.",
+      };
+    }
+
+    const validation = validateFastEndTimestamp(activeSession.startedAt, endedAt);
+
+    return {
+      endedAt: validation.valid ? endedAt : null,
+      durationMinutes: validation.durationMinutes,
+      error: validation.message,
+    };
+  })();
   const refreshDashboard = useCallback(async (options?: { force?: boolean; quiet?: boolean }) => {
     if (!userId) {
       return undefined;
@@ -580,29 +612,73 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
 
     window.sessionStorage.removeItem(SYNC_AFTER_SIGN_IN_KEY);
     const localData = readLocalDashboardData();
+    const completedSessions = localData.sessions.filter(
+      (session): session is typeof session & { endedAt: string } =>
+        session.status === "completed" && Boolean(session.endedAt) && (session.durationMinutes ?? 0) > 0
+    );
 
-    if (!localData.activeSession) {
+    if (!localData.activeSession && !completedSessions.length) {
       return;
     }
 
     void (async () => {
-      try {
-        const response = await fetch("/api/fasts", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            plannedMinutes: localData.activeSession?.plannedMinutes,
-            startedAt: localData.activeSession?.startedAt,
-          }),
-        });
+      let activeSessionSynced = false;
+      let completedSessionIds: string[] = [];
+      const syncErrors: string[] = [];
 
-        if (!response.ok) {
-          throw new Error(await readApiError(response));
+      if (completedSessions.length) {
+        try {
+          const response = await fetch("/api/fasts/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessions: completedSessions.map((session) => ({
+                sourceId: session.id,
+                startedAt: session.startedAt,
+                endedAt: session.endedAt,
+                plannedMinutes: session.plannedMinutes,
+                notes: session.notes,
+              })),
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(await readApiError(response));
+          }
+
+          const payload = (await response.json()) as { syncedSourceIds: string[] };
+          completedSessionIds = payload.syncedSourceIds;
+        } catch (error) {
+          syncErrors.push(error instanceof Error ? error.message : "Completed history could not be synced.");
         }
+      }
 
-        const remainingLocalData = buildPostSyncLocalDashboardData(localData);
+      if (localData.activeSession) {
+        try {
+          const response = await fetch("/api/fasts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              plannedMinutes: localData.activeSession.plannedMinutes,
+              startedAt: localData.activeSession.startedAt,
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(await readApiError(response));
+          }
+
+          activeSessionSynced = true;
+        } catch (error) {
+          syncErrors.push(error instanceof Error ? error.message : "Active fast could not be synced.");
+        }
+      }
+
+      if (activeSessionSynced || completedSessionIds.length) {
+        const remainingLocalData = buildPostSyncLocalDashboardData(localData, {
+          activeSessionSynced,
+          completedSessionIds,
+        });
 
         if (remainingLocalData) {
           writeLocalDashboardData(remainingLocalData);
@@ -610,9 +686,17 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
           window.localStorage.removeItem(LOCAL_DASHBOARD_STORAGE_KEY);
         }
         await refreshDashboard({ force: true });
-        toast.success("Local fast synced to your account.");
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Your local fast could not be saved.");
+        toast.success(
+          completedSessionIds.length && activeSessionSynced
+            ? "Local fast and history synced to your account."
+            : completedSessionIds.length
+              ? "Local fasting history synced to your account."
+              : "Local active fast synced to your account."
+        );
+      }
+
+      if (syncErrors.length) {
+        toast.error(syncErrors.join(" "));
       }
     })();
   }, [refreshDashboard, signedIn, userId]);
@@ -866,14 +950,63 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     });
   }
 
-  async function resolveSession(action: Exclude<PendingAction, null>) {
+  function openSessionAction(action: Exclude<PendingAction, null>) {
+    setPendingAction(action);
+    setEndTimeError(null);
+    setEndTimeOverride(null);
+
+    if (action === "complete") {
+      const now = new Date().toISOString();
+      setEndTimeMode("now");
+      setEndDateValue(getDateValue(now));
+      setEndTimeValue(getClockValue(now));
+    }
+  }
+
+  function setManualEndTime(endedAt: string) {
+    setEndTimeMode("earlier");
+    setEndDateValue(getDateValue(endedAt));
+    setEndTimeValue(getClockValue(endedAt));
+    setEndTimeError(null);
+    setEndTimeOverride(endedAt);
+  }
+
+  function setEndFromBackdate(minutes: number) {
+    setManualEndTime(new Date(Date.now() - minutes * 60000).toISOString());
+  }
+
+  function setEndAtPlannedWindow() {
     if (!activeSession) {
       return;
     }
 
+    const plannedEndMs = Date.parse(activeSession.startedAt) + activeSession.plannedMinutes * 60000;
+    setManualEndTime(new Date(Math.min(plannedEndMs, Date.now())).toISOString());
+  }
+
+  async function resolveSession(action: Exclude<PendingAction, null>, completedAt?: string) {
+    if (!activeSession) {
+      return;
+    }
+
+    if (action === "complete") {
+      const validation = validateFastEndTimestamp(
+        activeSession.startedAt,
+        completedAt ?? new Date().toISOString()
+      );
+
+      if (!validation.valid) {
+        setEndTimeError(validation.message);
+        return;
+      }
+    }
+
     if (!userId) {
-      const endedAt = new Date().toISOString();
-      const durationMinutes = Math.max(0, Math.round((Date.parse(endedAt) - Date.parse(activeSession.startedAt)) / 60000));
+      const endedAt = action === "complete" && completedAt ? completedAt : new Date().toISOString();
+      const durationMinutes = Math.max(
+        0,
+        Math.round((Date.parse(endedAt) - Date.parse(activeSession.startedAt)) / 60000)
+      );
 
       if (action === "complete" && durationMinutes < 1) {
         setPendingAction(null);
@@ -881,7 +1014,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         return;
       }
 
-      const finalStageReached = Math.max(activeSession.stageReached ?? 0, getStageIndexForMinutes(durationMinutes));
+      const finalStageReached = getStageIndexForMinutes(durationMinutes);
       const finishedSession = {
         ...activeSession,
         endedAt,
@@ -930,6 +1063,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         body: JSON.stringify({
           action,
           notes: "",
+          ...(action === "complete" && completedAt ? { endedAt: completedAt } : {}),
         }),
       });
 
@@ -1040,7 +1174,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       {!signedIn && !activeSession ? (
-        <Card className="section-enter surface-primary relative overflow-hidden" style={{ animationDelay: "0ms" }}>
+        <Card className="order-2 section-enter surface-primary relative overflow-hidden" style={{ animationDelay: "100ms" }}>
           <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
           <CardContent className="grid gap-5 p-5 sm:p-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
             <div>
@@ -1067,7 +1201,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
           </CardContent>
         </Card>
       ) : null}
-      <Card className="surface-primary section-enter relative overflow-hidden" style={{ animationDelay: "0ms" }}>
+      <Card className="order-1 surface-primary section-enter relative overflow-hidden" style={{ animationDelay: "0ms" }}>
         <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
         <CardContent className="space-y-6 p-4 sm:p-6">
           <div className="flex flex-col gap-3">
@@ -1090,7 +1224,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
             activeSession={activeSession}
             isMutatingFast={isMutatingFast}
             onOpenStartTimeDialog={openStartTimeDialog}
-            onPendingAction={setPendingAction}
+            onPendingAction={openSessionAction}
             onSelectWindow={setSelectedWindow}
             onStageReached={handleStageReached}
             plannedMinutes={plannedMinutes}
@@ -1099,7 +1233,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         </CardContent>
       </Card>
 
-      <Card className="section-enter" style={{ animationDelay: "100ms" }}>
+      <Card className="order-3 section-enter" style={{ animationDelay: "150ms" }}>
         <CardContent className="p-4 sm:p-6">
           <div className="glass-soft flex items-start gap-3 rounded-[1.6rem] px-4 py-4 text-sm leading-6 text-muted-foreground">
             <div className="rounded-2xl bg-amber-500/10 p-2 text-amber-300">
@@ -1206,6 +1340,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                       </label>
                       <Input
                         id="start-date"
+                        aria-invalid={Boolean(startTimeError)}
                         autoComplete="off"
                         enterKeyHint="next"
                         inputMode="numeric"
@@ -1224,20 +1359,21 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                       </label>
                       <Input
                         id="start-time"
+                        aria-invalid={Boolean(startTimeError)}
+                        type="time"
                         autoComplete="off"
                         enterKeyHint="done"
-                        inputMode="numeric"
-                        maxLength={5}
+                        step={60}
                         placeholder="18:30"
                         value={startTimeValue}
                         onChange={(event) => {
-                          setStartTimeValue(formatTimeDraft(event.target.value));
+                          setStartTimeValue(event.target.value);
                           setStartTimeError(null);
                         }}
                       />
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
                     {QUICK_BACKDATE_OPTIONS.map((option) => (
                       <button
                         key={option.minutes}
@@ -1303,7 +1439,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                 </div>
               ) : null}
 
-              {startTimeError ? <p className="text-sm text-destructive">{startTimeError}</p> : null}
+              {startTimeError ? <p className="text-sm text-destructive" role="alert">{startTimeError}</p> : null}
             </div>
 
             <DialogFooter className="mx-0 mb-0 shrink-0 px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:mx-0 sm:mb-0 sm:px-5 sm:py-4">
@@ -1355,22 +1491,163 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
       ) : null}
 
       {pendingAction ? (
-        <Dialog open onOpenChange={(open) => setPendingAction(open ? pendingAction : null)}>
-          <DialogContent className="mx-2 max-w-[calc(100vw-1rem)] sm:mx-auto sm:max-w-lg">
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open) {
+              setPendingAction(null);
+              setEndTimeError(null);
+            }
+          }}
+        >
+          <DialogContent className="mx-2 max-h-[calc(100dvh-1rem)] max-w-[calc(100vw-1rem)] overflow-y-auto sm:mx-auto sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>{pendingAction === "complete" ? "End this fast?" : "Cancel this fast?"}</DialogTitle>
               <DialogDescription>
                 {pendingAction === "complete"
-                  ? "This will save the finished session and update your account."
+                  ? signedIn
+                    ? "Save the time you actually finished. Your account totals will use that time."
+                    : "Save the time you actually finished. This session will stay on this device until you sign in."
                   : "This will stop the active timer and mark this session as cancelled."}
               </DialogDescription>
             </DialogHeader>
+            {pendingAction === "complete" && activeSession ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-2" aria-label="Choose when the fast ended">
+                  {([
+                    { label: "End now", value: "now" },
+                    { label: "Ended earlier", value: "earlier" },
+                  ] as const).map((option) => {
+                    const active = endTimeMode === option.value;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        aria-pressed={active}
+                        className={cn(
+                          "min-h-12 rounded-2xl border px-4 py-3 text-left text-sm font-medium transition-colors",
+                          active
+                            ? "border-primary bg-primary/15 text-primary"
+                            : "border-white/[0.08] bg-white/[0.04] text-foreground hover:border-white/[0.14]"
+                        )}
+                        onClick={() => {
+                          setEndTimeMode(option.value);
+                          setEndTimeError(null);
+                          setEndTimeOverride(null);
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {endTimeMode === "earlier" ? (
+                  <div className="space-y-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="text-xs uppercase tracking-[0.24em] text-muted-foreground" htmlFor="end-date">
+                          End date
+                        </label>
+                        <Input
+                          id="end-date"
+                          autoComplete="off"
+                          inputMode="numeric"
+                          maxLength={10}
+                          value={endDateValue}
+                          onChange={(event) => {
+                            setEndDateValue(formatDateDraft(event.target.value));
+                            setEndTimeError(null);
+                            setEndTimeOverride(null);
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs uppercase tracking-[0.24em] text-muted-foreground" htmlFor="end-time">
+                          End time
+                        </label>
+                        <Input
+                          id="end-time"
+                          type="time"
+                          step={60}
+                          value={endTimeValue}
+                          onChange={(event) => {
+                            setEndTimeValue(event.target.value);
+                            setEndTimeError(null);
+                            setEndTimeOverride(null);
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      <button
+                        className="min-h-10 rounded-xl border border-primary/25 bg-primary/10 px-2 text-xs font-medium text-primary transition-colors hover:bg-primary/15 sm:col-span-1"
+                        onClick={setEndAtPlannedWindow}
+                        type="button"
+                      >
+                        At planned end
+                      </button>
+                      {QUICK_END_BACKDATE_OPTIONS.map((option) => (
+                        <button
+                          key={option.minutes}
+                          className="min-h-10 rounded-xl border border-white/[0.08] bg-white/[0.04] px-2 text-xs font-medium text-foreground transition-colors hover:bg-white/[0.08]"
+                          onClick={() => setEndFromBackdate(option.minutes)}
+                          type="button"
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="glass-soft grid grid-cols-2 gap-3 rounded-[1.4rem] px-4 py-4">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Recorded duration</p>
+                    <p className="mt-2 text-base font-medium text-foreground">
+                      {selectedEndPreview?.endedAt
+                        ? formatDuration(selectedEndPreview.durationMinutes)
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">End time</p>
+                    <p className="mt-2 text-base font-medium text-foreground">
+                      {selectedEndPreview?.endedAt ? formatTime(selectedEndPreview.endedAt) : "—"}
+                    </p>
+                  </div>
+                </div>
+
+                {endTimeError || selectedEndPreview?.error ? (
+                  <p className="text-sm text-destructive" role="alert">
+                    {endTimeError ?? selectedEndPreview?.error}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             <DialogFooter>
               <Button onClick={() => setPendingAction(null)} variant="outline">
                 Keep current
               </Button>
-              <Button onClick={() => void resolveSession(pendingAction)} variant={pendingAction === "complete" ? "default" : "destructive"}>
-                {pendingAction === "complete" ? "End fast" : "Confirm cancel"}
+              <Button
+                disabled={isMutatingFast}
+                onClick={() => {
+                  if (pendingAction === "complete") {
+                    if (!selectedEndPreview?.endedAt || selectedEndPreview.error) {
+                      setEndTimeError(selectedEndPreview?.error ?? "Choose a valid end time.");
+                      return;
+                    }
+
+                    void resolveSession("complete", selectedEndPreview.endedAt);
+                    return;
+                  }
+
+                  void resolveSession("cancel");
+                }}
+                variant={pendingAction === "complete" ? "default" : "destructive"}
+              >
+                {pendingAction === "complete" ? "Save completed fast" : "Confirm cancel"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1424,7 +1701,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
 
       {completionSummary ? (
         <Dialog open onOpenChange={(open) => setCompletionSummary(open ? completionSummary : null)}>
-          <DialogContent className="animate-pop-in mx-2 max-w-[calc(100vw-1rem)] overflow-hidden bg-[linear-gradient(180deg,#1a1a1a_0%,#0d0d0d_100%)] sm:mx-auto sm:max-w-lg">
+          <DialogContent className="animate-pop-in mx-2 max-h-[calc(100dvh-1rem)] max-w-[calc(100vw-1rem)] overflow-y-auto bg-[linear-gradient(180deg,#1a1a1a_0%,#0d0d0d_100%)] sm:mx-auto sm:max-w-lg">
             <DialogHeader>
               <DialogTitle className="text-center text-xs uppercase tracking-[0.36em] text-muted-foreground">
                 Fast Complete

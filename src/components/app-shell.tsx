@@ -62,14 +62,20 @@ export async function AppShell({
 
   return (
     <div className="relative min-h-screen overflow-hidden">
+      <a
+        href="#main-content"
+        className="fixed left-4 top-4 z-[100] -translate-y-24 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg transition-transform focus:translate-y-0"
+      >
+        Skip to main content
+      </a>
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.08),transparent_20%),radial-gradient(circle_at_bottom_right,rgba(34,197,94,0.08),transparent_22%)]" />
       <div className="relative mx-auto flex min-h-screen w-full max-w-[880px] flex-col px-4 pb-0 pt-[calc(env(safe-area-inset-top)+0.75rem)] sm:px-6 sm:pt-[calc(env(safe-area-inset-top)+1rem)]">
         <header className="glass-card relative z-40 overflow-visible rounded-[1.9rem] p-3.5 shadow-[0_20px_80px_rgba(0,0,0,0.25)] sm:p-4">
           <div className="flex items-center justify-between gap-4">
             <Link href="/" className="min-w-0">
-              <BrandMark />
+              <BrandMark showTagline={false} />
             </Link>
-            <div className="hidden items-center gap-2 lg:flex">
+            <nav aria-label="Primary" className="hidden items-center gap-2 lg:flex">
               {navItems.map((item) => {
                 const Icon = item.icon;
 
@@ -97,18 +103,18 @@ export async function AppShell({
                 );
               })}
               <Separator orientation="vertical" className="mx-1 h-6" />
-            </div>
+            </nav>
             <div className="flex items-center gap-2">
               <AuthButton profile={profile} providers={providers} user={session?.user} />
             </div>
           </div>
-          <div className="mt-5 hidden flex-col gap-3 lg:flex lg:flex-row lg:items-end lg:justify-between">
+          <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <h1 className="mt-2 font-[family:var(--font-heading)] text-3xl font-semibold tracking-tight sm:text-[2.5rem]">
+              <h1 className="sr-only font-[family:var(--font-heading)] text-3xl font-semibold tracking-tight lg:not-sr-only lg:mt-2 lg:text-[2.5rem]">
                 {title}
               </h1>
             </div>
-            <p className="max-w-lg text-sm leading-6 text-muted-foreground sm:text-base">{description}</p>
+            <p className="hidden max-w-lg text-sm leading-6 text-muted-foreground lg:block lg:text-base">{description}</p>
           </div>
         </header>
         <div className="mt-4 grid gap-4">
@@ -143,7 +149,13 @@ export async function AppShell({
             </div>
           ) : null}
         </div>
-        <main className="flex-1 pt-5 pb-[calc(env(safe-area-inset-bottom)+7.5rem)] sm:py-7 lg:pb-8">{children}</main>
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 pt-5 pb-[calc(env(safe-area-inset-bottom)+7.5rem)] outline-none sm:py-7 lg:pb-8"
+        >
+          {children}
+        </main>
         <div className="pb-[calc(env(safe-area-inset-bottom)+7.5rem)] lg:pb-6">
           <InstallPrompt currentPath={currentPath} />
         </div>

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getErrorMessage, getErrorStatus, getZodMessage, jsonMessage, readJsonBody } from "@/lib/api-responses";
 import { MAX_PUBLIC_FAST_MINUTES, MIN_PUBLIC_FAST_MINUTES } from "@/lib/fasting";
 import { getCurrentUserId, startFast } from "@/lib/fasting-data";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const startFastSchema = z.object({
   plannedMinutes: z
@@ -22,6 +23,15 @@ export async function POST(request: Request) {
 
   if (!userId) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const rateLimit = checkRateLimit(`fasts:start:${userId}`, 20, 60_000);
+
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { message: "Too many fasting updates. Try again shortly." },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+    );
   }
 
   const body = await readJsonBody(request);

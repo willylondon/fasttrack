@@ -37,7 +37,7 @@ export function MobileNav({ currentPath }: MobileNavProps) {
   const primaryPath = getPrimaryPath(currentPath);
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.1] bg-[rgba(11,11,11,0.95)] shadow-[0_-18px_40px_rgba(0,0,0,0.28)] backdrop-blur lg:hidden">
+    <nav aria-label="Primary" className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.1] bg-[rgba(11,11,11,0.95)] shadow-[0_-18px_40px_rgba(0,0,0,0.28)] backdrop-blur lg:hidden">
       <div className="mx-auto grid max-w-[900px] grid-cols-5 gap-1 px-1 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2">
         {navItems.map((item) => {
           const active = item.href === primaryPath;
@@ -46,6 +46,7 @@ export function MobileNav({ currentPath }: MobileNavProps) {
           return (
             <Link
               aria-label={item.label}
+              aria-current={active ? "page" : undefined}
               key={item.href}
               href={item.href}
               prefetch={false}

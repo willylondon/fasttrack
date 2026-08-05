@@ -63,16 +63,30 @@ export function buildSignedOutHistoryData(source: DashboardData): HistoryData {
   };
 }
 
-export function buildPostSyncLocalDashboardData(source: DashboardData): DashboardData | null {
-  const normalized = normalizeLocalDashboardData(source);
+type PostSyncOptions = {
+  activeSessionSynced?: boolean;
+  completedSessionIds?: string[];
+};
 
-  if (!normalized.sessions.length) {
+export function buildPostSyncLocalDashboardData(
+  source: DashboardData,
+  options: PostSyncOptions = { activeSessionSynced: true }
+): DashboardData | null {
+  const normalized = normalizeLocalDashboardData(source);
+  const completedSessionIds = new Set(options.completedSessionIds ?? []);
+  const remainingSessions = normalized.sessions.filter(
+    (session) => !completedSessionIds.has(session.id)
+  );
+  const activeSession = options.activeSessionSynced ? null : normalized.activeSession;
+
+  if (!activeSession && !remainingSessions.length) {
     return null;
   }
 
   return {
     ...normalized,
-    activeSession: null,
-    milestoneStageReached: 0,
+    activeSession,
+    sessions: remainingSessions,
+    milestoneStageReached: activeSession ? normalized.milestoneStageReached : 0,
   };
 }
