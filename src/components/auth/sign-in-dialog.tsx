@@ -69,13 +69,13 @@ export function SignInDialog({
 
   return (
     <>
-      <Button className={cn(buttonClassName)} onClick={() => setOpen(true)} size={size} variant={variant}>
+      <Button className={cn("min-h-11", buttonClassName)} onClick={() => setOpen(true)} size={size} variant={variant}>
         {buttonLabel}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="border border-border/80 bg-card p-0 sm:max-w-md">
           <DialogHeader className="p-6 pb-3">
-            <Badge variant="outline" className="mb-3 w-fit border-primary/30 text-primary">
+            <Badge variant="outline" className="mb-3 w-fit border-primary/30 text-primary-readable">
               FastTrack account
             </Badge>
             <DialogTitle>Join FastTrack</DialogTitle>

@@ -2,7 +2,7 @@
 
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
-import { Check, Clock3, Flag, PencilLine, Share2, ShieldAlert, X } from "lucide-react";
+import { Check, ChevronDown, Clock3, Flag, PencilLine, Share2, ShieldAlert, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { FastingMilestoneBar } from "@/components/dashboard/fasting-milestone-bar";
@@ -10,7 +10,7 @@ import { ShareFastCard } from "@/components/dashboard/share-fast-card";
 import { TimerRing } from "@/components/dashboard/timer-ring";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +33,7 @@ import {
   getProgressPercent,
   getStageForMinutes,
   getStageIndexForMinutes,
+  isFastSubstantiallyOverdue,
   MANUAL_START_CONFIRM_MINUTES,
   MAX_MANUAL_START_BACKDATE_MINUTES,
   MAX_PUBLIC_FAST_MINUTES,
@@ -271,12 +272,13 @@ function LiveTimerPanel({
   const currentStageIndex = getStageIndexForMinutes(elapsedMinutes);
   const currentStage = getStageForMinutes(elapsedMinutes);
   const remainingMinutes = activeSession ? Math.max(activeSession.plannedMinutes - elapsedMinutes, 0) : plannedMinutes;
+  const needsOverdueResolution = isFastSubstantiallyOverdue(activeSession, now);
   const statusLabel = getStatusLabel(Boolean(activeSession), currentStage, remainingMinutes);
   const hourlyCheckIn = getHourlyCheckIn(elapsedMinutes / 60, Boolean(activeSession));
   const nextMilestone = FASTING_STAGES.find((stage) => stage.hour * 60 > elapsedMinutes);
   const timerMetrics = [
     { label: "Window", value: formatCompactDuration(activeSession?.plannedMinutes ?? plannedMinutes) },
-    { label: "Stage", value: activeSession ? currentStage.label : "Ready" },
+    { label: "Est. stage", value: activeSession ? currentStage.label : "Ready" },
     { label: activeSession ? "Remaining" : "Starts", value: activeSession ? formatCompactDuration(remainingMinutes) : "Now" },
     { label: "Next", value: nextMilestone ? `${formatStageHour(nextMilestone.hour)} ${nextMilestone.label}` : "Complete" },
   ];
@@ -291,8 +293,8 @@ function LiveTimerPanel({
 
   return (
     <>
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)] lg:items-center">
-        <div className="order-2 lg:order-1">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)] lg:items-center lg:gap-6">
+        <div className="contents lg:block">
           <TimerRing
             active={Boolean(activeSession)}
             elapsedMinutes={elapsedMinutes}
@@ -300,19 +302,28 @@ function LiveTimerPanel({
             progress={activeSession ? progress : 0}
             stage={currentStage}
           />
-          <div className="premium-rail mt-4 grid grid-cols-2 gap-2 rounded-[1.25rem] p-2 sm:grid-cols-4 lg:grid-cols-2">
+          <div className="premium-rail order-3 mt-2 grid grid-cols-2 gap-1 rounded-[1.25rem] p-2 sm:grid-cols-4 lg:order-none lg:grid-cols-2">
             {timerMetrics.map((metric) => (
               <div key={metric.label} className="rounded-2xl px-3 py-2">
-                <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                   {metric.label}
                 </p>
-                <p className="mt-1 truncate text-sm font-semibold text-foreground">{metric.value}</p>
+                <p className="timer-numerals mt-1 truncate text-sm font-semibold text-foreground">{metric.value}</p>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="order-1 space-y-4 lg:order-2">
+        <div className="order-2 space-y-4 lg:order-none">
+          {needsOverdueResolution ? (
+            <div className="rounded-[1.3rem] border border-amber-400/30 bg-amber-400/10 px-4 py-3" role="status">
+              <p className="text-sm leading-5 text-amber-100">
+                <span className="font-semibold">This fast is well past its plan.</span>{" "}
+                Resolve it so your history stays accurate.
+              </p>
+            </div>
+          ) : null}
+
           <div className="grid gap-3">
             {!activeSession ? (
               <Button
@@ -333,7 +344,7 @@ function LiveTimerPanel({
                   size="lg"
                 >
                   <Check className="size-4" />
-                  End fast
+                  {needsOverdueResolution ? "Resolve overdue fast" : "End fast"}
                 </Button>
                 <Button
                   className="h-11 w-full"
@@ -371,7 +382,7 @@ function LiveTimerPanel({
                         className={cn(
                           "min-h-[48px] rounded-2xl border px-3 py-3 text-sm font-medium transition-colors",
                           active
-                            ? "border-primary bg-primary/15 text-primary shadow-[0_12px_26px_rgba(139,92,246,0.18)]"
+                            ? "border-primary bg-primary/15 text-primary-readable shadow-[0_12px_26px_rgba(139,92,246,0.18)]"
                             : "border-white/[0.08] bg-white/[0.04] text-foreground hover:border-white/[0.14]"
                         )}
                         key={option.label}
@@ -392,7 +403,7 @@ function LiveTimerPanel({
                   </p>
                 ) : null}
                 <div className="rounded-[1.3rem] border border-white/[0.08] bg-black/20 px-4 py-3">
-                  <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Current status</p>
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Current status</p>
                   <p className="mt-2 text-base font-medium text-foreground">{statusLabel}</p>
                 </div>
                 <p className="text-sm leading-6 text-muted-foreground">
@@ -402,37 +413,24 @@ function LiveTimerPanel({
               </div>
             </div>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {[
-                { label: "Started", value: formatTime(activeSession.startedAt) },
-                {
-                  label: "Ends",
-                  value: formatTime(
-                    new Date(Date.parse(activeSession.startedAt) + activeSession.plannedMinutes * 60000).toISOString()
-                  ),
-                },
-                { label: "Elapsed", value: formatDuration(elapsedMinutes) },
-                { label: "Remaining", value: formatDuration(remainingMinutes) },
-                { label: "Current status", value: statusLabel, fullWidth: true },
-              ].map((item) => (
-                <div
-                  className={cn(
-                    "glass-soft rounded-[1.4rem] px-4 py-4",
-                    item.fullWidth ? "sm:col-span-2" : undefined
-                  )}
-                  key={item.label}
-                >
-                  <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">{item.label}</p>
-                  <p className="mt-2 text-base font-medium text-foreground sm:text-lg">{item.value}</p>
-                </div>
-              ))}
+            <div className="premium-rail grid grid-cols-2 gap-x-5 gap-y-4 rounded-[1.4rem] px-4 py-4">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Started</p>
+                <p className="timer-numerals mt-1 text-base font-medium text-foreground">{formatTime(activeSession.startedAt)}</p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Planned end</p>
+                <p className="timer-numerals mt-1 text-base font-medium text-foreground">
+                  {formatTime(new Date(Date.parse(activeSession.startedAt) + activeSession.plannedMinutes * 60000).toISOString())}
+                </p>
+              </div>
             </div>
           )}
 
           <div className="premium-rail rounded-[1.25rem] px-4 py-4">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Coach note</p>
-              <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Coach note</p>
+              <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
                 {activeSession ? `Hour ${Math.floor(elapsedMinutes / 60)}` : "Before you start"}
               </span>
             </div>
@@ -442,12 +440,22 @@ function LiveTimerPanel({
         </div>
       </div>
 
-      <FastingMilestoneBar
-        active={Boolean(activeSession)}
-        elapsedMinutes={elapsedMinutes}
-        plannedMinutes={activeSession?.plannedMinutes ?? plannedMinutes}
-        startedAt={activeSession?.startedAt ?? null}
-      />
+      {activeSession ? (
+        <details className="group rounded-[1.5rem] border border-white/[0.08] bg-white/[0.025]">
+          <summary className="flex min-h-[48px] cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-foreground marker:content-none">
+            <span>View estimated milestone timeline</span>
+            <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="border-t border-white/[0.08] p-2">
+            <FastingMilestoneBar
+              active
+              elapsedMinutes={elapsedMinutes}
+              plannedMinutes={activeSession.plannedMinutes}
+              startedAt={activeSession.startedAt}
+            />
+          </div>
+        </details>
+      ) : null}
     </>
   );
 }
@@ -1193,7 +1201,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                 { label: "Saved here", value: "Local" },
               ].map((item) => (
                 <div key={item.label} className="rounded-2xl px-2 py-3">
-                  <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{item.label}</p>
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{item.label}</p>
                   <p className="mt-2 text-sm font-semibold text-foreground sm:text-base">{item.value}</p>
                 </div>
               ))}
@@ -1203,15 +1211,15 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
       ) : null}
       <Card className="order-1 surface-primary section-enter relative overflow-hidden" style={{ animationDelay: "0ms" }}>
         <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-        <CardContent className="space-y-6 p-4 sm:p-6">
+        <CardContent className="space-y-5 p-4 sm:p-6">
           <div className="flex flex-col gap-3">
             <div className="space-y-2">
-              <Badge className="w-fit">Today</Badge>
+              <Badge className="hidden w-fit sm:inline-flex">Today</Badge>
               <div>
                 <h2 className="font-[family:var(--font-heading)] text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
                   {activeSession ? "Current fast" : "Ready to start"}
                 </h2>
-                <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground sm:text-base">
+                <p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground sm:mt-2 sm:text-base">
                   {activeSession
                     ? "Track the window you planned, stay steady, and end the session when it matches your routine."
                   : "Choose your window and begin when ready."}
@@ -1233,20 +1241,16 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         </CardContent>
       </Card>
 
-      <Card className="order-3 section-enter" style={{ animationDelay: "150ms" }}>
-        <CardContent className="p-4 sm:p-6">
-          <div className="glass-soft flex items-start gap-3 rounded-[1.6rem] px-4 py-4 text-sm leading-6 text-muted-foreground">
-            <div className="rounded-2xl bg-amber-500/10 p-2 text-amber-300">
-              <ShieldAlert className="size-4" />
-            </div>
-            <p>
-              FastTrack is a tracking tool, not medical advice. Fasting may not be appropriate for everyone. People
-              under 18, pregnant users, users with diabetes, eating-disorder history, or medical conditions should
-              seek qualified medical guidance before fasting.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="order-3 section-enter flex items-start gap-3 px-2 text-sm leading-6 text-muted-foreground" style={{ animationDelay: "150ms" }}>
+        <div className="rounded-xl bg-amber-500/10 p-2 text-amber-300">
+          <ShieldAlert className="size-4" />
+        </div>
+        <p>
+          FastTrack is a tracking tool, not medical advice. Fasting may not be appropriate for everyone. People
+          under 18, pregnant users, users with diabetes, eating-disorder history, or medical conditions should
+          seek qualified medical guidance before fasting.
+        </p>
+      </div>
 
       <Dialog open={safetyDialogOpen} onOpenChange={setSafetyDialogOpen}>
         <DialogContent>
@@ -1317,7 +1321,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                       className={cn(
                         "min-h-[48px] rounded-2xl border px-4 py-3 text-left text-sm font-medium transition-colors",
                         active
-                          ? "border-primary bg-primary/15 text-primary shadow-[0_12px_26px_rgba(139,92,246,0.18)]"
+                          ? "border-primary bg-primary/15 text-primary-readable shadow-[0_12px_26px_rgba(139,92,246,0.18)]"
                           : "border-white/[0.08] bg-white/[0.04] text-foreground hover:border-white/[0.14]"
                       )}
                       onClick={() => {
@@ -1528,7 +1532,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                         className={cn(
                           "min-h-12 rounded-2xl border px-4 py-3 text-left text-sm font-medium transition-colors",
                           active
-                            ? "border-primary bg-primary/15 text-primary"
+                            ? "border-primary bg-primary/15 text-primary-readable"
                             : "border-white/[0.08] bg-white/[0.04] text-foreground hover:border-white/[0.14]"
                         )}
                         onClick={() => {
@@ -1582,7 +1586,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                     </div>
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                       <button
-                        className="min-h-10 rounded-xl border border-primary/25 bg-primary/10 px-2 text-xs font-medium text-primary transition-colors hover:bg-primary/15 sm:col-span-1"
+                        className="min-h-10 rounded-xl border border-primary/25 bg-primary/10 px-2 text-xs font-medium text-primary-readable transition-colors hover:bg-primary/15 sm:col-span-1"
                         onClick={setEndAtPlannedWindow}
                         type="button"
                       >
@@ -1769,7 +1773,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                         <p className="text-sm font-medium text-foreground">
                           {badge.icon} {badge.name}
                         </p>
-                        <Badge className="bg-primary/15 text-primary hover:bg-primary/20">Earned</Badge>
+                        <Badge className="bg-primary/15 text-primary-readable hover:bg-primary/20">Earned</Badge>
                       </div>
                     ))}
                   </div>

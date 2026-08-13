@@ -106,7 +106,7 @@ export function InstallPrompt({ currentPath }: InstallPromptProps) {
       </button>
       <div className="flex flex-col gap-4 pr-10 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
-          <div className="rounded-2xl bg-primary/12 p-2.5 text-primary shadow-[0_10px_24px_rgba(139,92,246,0.18)]">
+          <div className="rounded-2xl bg-primary/12 p-2.5 text-primary-readable shadow-[0_10px_24px_rgba(139,92,246,0.18)]">
             {supportsPrompt ? <Download className="size-4" /> : <Smartphone className="size-4" />}
           </div>
           <div>

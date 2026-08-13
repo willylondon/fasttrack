@@ -489,7 +489,7 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
               <div className="grid gap-3 sm:grid-cols-4">
                 {checkInInsights.map((insight) => (
                   <div key={insight.label} className="premium-chip rounded-[1.25rem] px-4 py-4">
-                    <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{insight.label}</p>
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{insight.label}</p>
                     <p className="mt-2 font-[family:var(--font-heading)] text-2xl font-semibold text-foreground">
                       {insight.value}
                     </p>
@@ -528,7 +528,7 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
                     <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_1fr_1.25fr]">
                       {CHECK_IN_FIELDS.map((field) => (
                         <div key={field.key} className="space-y-2">
-                          <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                          <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
                             {field.label}
                           </p>
                           <div className="flex gap-1">
@@ -552,7 +552,7 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
                         </div>
                       ))}
                       <label className="space-y-2">
-                        <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                        <span className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
                           Note
                         </span>
                         <Textarea
@@ -608,7 +608,7 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
                     {editingEnd ? (
                       <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
                         <label className="space-y-2">
-                          <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                          <span className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
                             End date
                           </span>
                           <Input
@@ -624,7 +624,7 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
                           />
                         </label>
                         <label className="space-y-2">
-                          <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                          <span className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
                             End time
                           </span>
                           <Input

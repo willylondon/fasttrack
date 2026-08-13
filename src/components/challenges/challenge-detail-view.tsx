@@ -135,19 +135,19 @@ export function ChallengeDetailView({ challenge, signedIn }: ChallengeDetailView
 
           <div className="glass-soft mb-4 grid grid-cols-3 gap-3 rounded-[1.5rem] p-4">
             <div className="text-center">
-              <Target className="mx-auto mb-1 size-4 text-primary" />
+              <Target className="mx-auto mb-1 size-4 text-primary-readable" />
               <p className="text-lg font-bold text-foreground">{challenge.targetValue}</p>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Target</p>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Target</p>
             </div>
             <div className="text-center">
-              <Users className="mx-auto mb-1 size-4 text-primary" />
+              <Users className="mx-auto mb-1 size-4 text-primary-readable" />
               <p className="text-lg font-bold text-foreground">{challenge.participantCount}</p>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Joined</p>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Joined</p>
             </div>
             <div className="text-center">
-              <Clock className="mx-auto mb-1 size-4 text-primary" />
+              <Clock className="mx-auto mb-1 size-4 text-primary-readable" />
               <p className="text-lg font-bold text-foreground">{challenge.durationDays}d</p>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Duration</p>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Duration</p>
             </div>
           </div>
 
@@ -180,7 +180,7 @@ export function ChallengeDetailView({ challenge, signedIn }: ChallengeDetailView
       <Card className="section-enter" style={{ animationDelay: "50ms" }}>
         <CardHeader>
           <div className="flex items-center gap-3">
-            <div className="rounded-2xl bg-primary/10 p-2 text-primary shadow-[0_8px_20px_rgba(139,92,246,0.16)]">
+            <div className="rounded-2xl bg-primary/10 p-2 text-primary-readable shadow-[0_8px_20px_rgba(139,92,246,0.16)]">
               <Trophy className="size-4" />
             </div>
             <div>

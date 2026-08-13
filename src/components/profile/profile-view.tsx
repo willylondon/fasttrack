@@ -107,19 +107,24 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
           </>
         }
         preview={
-          <div className="grid gap-3 sm:grid-cols-3">
-            {[
-              { label: "Current streak", value: "5 days", tone: "text-success" },
-              { label: "Badge cabinet", value: "12 badges", tone: "text-gold" },
-              { label: "Level progress", value: "Level 4", tone: "text-primary" },
-            ].map((item) => (
-              <div key={item.label} className="premium-chip rounded-[1.25rem] p-4">
-                <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{item.label}</p>
-                <p className={cn("mt-3 font-[family:var(--font-heading)] text-2xl font-semibold", item.tone)}>
-                  {item.value}
-                </p>
-              </div>
-            ))}
+          <div>
+            <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Example progress
+            </p>
+            <div className="premium-rail grid gap-3 rounded-[1.5rem] p-3 sm:grid-cols-3">
+              {[
+                { label: "Current streak", value: "5 days", tone: "text-success" },
+                { label: "Badge cabinet", value: "12 badges", tone: "text-gold" },
+                { label: "Level progress", value: "Level 4", tone: "text-primary-readable" },
+              ].map((item) => (
+                <div key={item.label} className="rounded-[1.1rem] px-3 py-3">
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{item.label}</p>
+                  <p className={cn("mt-2 font-[family:var(--font-heading)] text-2xl font-semibold", item.tone)}>
+                    {item.value}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
         }
       />
@@ -549,7 +554,7 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
               <CardDescription>Encouragements and circle challenge updates stay here.</CardDescription>
             </div>
             {unreadCount ? (
-              <Badge variant="outline" className="border-primary/40 text-primary">
+              <Badge variant="outline" className="border-primary/40 text-primary-readable">
                 {unreadCount} new
               </Badge>
             ) : null}

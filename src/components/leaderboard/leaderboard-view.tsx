@@ -80,7 +80,7 @@ function renderRows(entries: LeaderboardEntry[], statLabel: string, showEncourag
                 </p>
                 <div
                   className={cn(
-                    "mt-2 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em]",
+                    "mt-2 inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em]",
                     visibleStage ? "bg-white/[0.04]" : "border-border/60 bg-background/40 text-muted-foreground"
                   )}
                   style={
@@ -122,7 +122,7 @@ export function LeaderboardView({ initialData, providers, signedIn }: Leaderboar
                 Rankings are based on consistency, completed windows, and steady habits rather than extreme fasting.
               </CardDescription>
             </div>
-            <Badge variant="outline" className="border-primary/30 text-primary">
+            <Badge variant="outline" className="border-primary/30 text-primary-readable">
               Friends first
             </Badge>
           </div>

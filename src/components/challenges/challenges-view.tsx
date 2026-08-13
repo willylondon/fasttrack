@@ -143,25 +143,25 @@ function ChallengeCard({ challenge }: { challenge: Challenge }) {
             )}
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
-            <Badge variant="outline" className="border-primary/30 text-primary">
+            <Badge variant="outline" className="border-primary/30 text-primary-readable">
               {CHALLENGE_TYPE_LABELS[challenge.challengeType]}
             </Badge>
-            <span className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+            <span className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
               {challenge.isPublic ? "Public" : "Circle"}
             </span>
           </div>
         </div>
         <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
           <div className="premium-chip rounded-2xl px-3 py-2">
-            <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">People</p>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">People</p>
             <p className="mt-1 truncate font-semibold text-foreground">{participantCopy}</p>
           </div>
           <div className="premium-chip rounded-2xl px-3 py-2">
-            <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Time</p>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Time</p>
             <p className="mt-1 truncate font-semibold text-foreground">{getDaysLabel(challenge.endsAt)}</p>
           </div>
           <div className="premium-chip rounded-2xl px-3 py-2">
-            <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Target</p>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Target</p>
             <p className="mt-1 truncate font-semibold text-foreground">
               {challenge.targetValue} {TYPE_UNITS[challenge.challengeType]}
             </p>
@@ -173,11 +173,11 @@ function ChallengeCard({ challenge }: { challenge: Challenge }) {
               <AvatarImage src={challenge.creator.avatarUrl ?? undefined} alt={challenge.creator.displayName ?? "Creator"} />
               <AvatarFallback>{getInitials(challenge.creator.displayName)}</AvatarFallback>
             </Avatar>
-            <span className="truncate text-[10px] text-muted-foreground/70">
+            <span className="truncate text-[11px] text-muted-foreground/70">
               by {challenge.creator.displayName ?? "FastTrack user"}
             </span>
           </div>
-          <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+          <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary-readable" />
         </div>
       </div>
     </Link>
@@ -354,7 +354,7 @@ function CreateChallengeDialog({
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-[10px] text-muted-foreground" id="challenge-type-help">{TYPE_HELP[challengeType]}</p>
+            <p className="text-[11px] text-muted-foreground" id="challenge-type-help">{TYPE_HELP[challengeType]}</p>
           </div>
           <div className="grid gap-2">
             <label className="text-xs font-medium text-foreground" htmlFor="challenge-target">Target ({TYPE_UNITS[challengeType]})</label>
@@ -432,7 +432,7 @@ export function ChallengesView({ initialData, providers, signedIn }: ChallengesV
       <Card className="section-enter" style={{ animationDelay: "0ms" }}>
         <CardHeader>
           <div className="flex items-center gap-3">
-            <div className="rounded-2xl bg-primary/10 p-2 text-primary shadow-[0_8px_20px_rgba(139,92,246,0.16)]">
+            <div className="rounded-2xl bg-primary/10 p-2 text-primary-readable shadow-[0_8px_20px_rgba(139,92,246,0.16)]">
               <Trophy className="size-4" />
             </div>
             <div>
@@ -464,7 +464,7 @@ export function ChallengesView({ initialData, providers, signedIn }: ChallengesV
                   ["Milestone Hunt", "3x", "Autophagy"],
                 ].map(([title, value, label]) => (
                   <div key={title} className="premium-chip rounded-[1.25rem] p-4">
-                    <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
                     <p className="mt-2 text-lg font-semibold text-foreground">{value}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{title}</p>
                   </div>
@@ -485,7 +485,7 @@ export function ChallengesView({ initialData, providers, signedIn }: ChallengesV
         <CardHeader>
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="rounded-2xl bg-primary/10 p-2 text-primary shadow-[0_8px_20px_rgba(139,92,246,0.16)]">
+              <div className="rounded-2xl bg-primary/10 p-2 text-primary-readable shadow-[0_8px_20px_rgba(139,92,246,0.16)]">
                 <Trophy className="size-4" />
               </div>
               <div>
@@ -513,7 +513,7 @@ export function ChallengesView({ initialData, providers, signedIn }: ChallengesV
                 {CHALLENGE_TEMPLATES.map((template) => (
                   <div key={template.title} className="glass-soft rounded-[1.5rem] p-4">
                     <div className="mb-3 flex items-center gap-2">
-                      <Sparkles className="size-4 text-primary" />
+                      <Sparkles className="size-4 text-primary-readable" />
                       <p className="truncate text-sm font-semibold text-foreground">{template.title}</p>
                     </div>
                     <p className="mb-4 min-h-10 text-xs leading-5 text-muted-foreground">{template.description}</p>
@@ -540,7 +540,7 @@ export function ChallengesView({ initialData, providers, signedIn }: ChallengesV
               <TabsContent value="active">
                 {data.active.length === 0 ? (
                   <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/60 px-5 py-12 text-center">
-                    <Flame className="mx-auto mb-3 size-5 text-primary" />
+                    <Flame className="mx-auto mb-3 size-5 text-primary-readable" />
                     <p className="text-sm font-medium text-foreground">No active challenges yet.</p>
                     <p className="mt-1 text-sm text-muted-foreground">Browse open challenges or launch one your way.</p>
                   </div>

@@ -71,14 +71,14 @@ export const FASTING_STAGES: FastingStage[] = [
   },
   {
     hour: 16,
-    label: "Autophagy window",
+    label: "Possible autophagy window",
     emoji: "◆",
     description: "A common target for structured fasting routines. Consistency at your planned window matters more than going longer.",
     color: "#8b5cf6",
   },
   {
     hour: 18,
-    label: "Deep autophagy",
+    label: "Extended fasting window",
     emoji: "⬡",
     description: "This is FastTrack's cautious upper planning limit. Continue only if it matches your plan and you feel well.",
     color: "#a855f7",
@@ -91,8 +91,8 @@ export const FASTING_MILESTONES: FastingMilestone[] = [
   { hour: 4, label: "Fat burning warm-up", color: "#a78bfa" },
   { hour: 8, label: "Glycogen dipping", color: "#f59e0b" },
   { hour: 12, label: "Ketosis building", color: "#ef4444" },
-  { hour: 16, label: "Autophagy window", color: "#8b5cf6" },
-  { hour: 18, label: "Deep autophagy", color: "#a855f7" },
+  { hour: 16, label: "Possible autophagy window", color: "#8b5cf6" },
+  { hour: 18, label: "Extended fasting window", color: "#a855f7" },
 ] as const;
 
 export function getCurrentStage(elapsedHours: number) {

@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { Session } from "next-auth";
-import { BarChart3, CalendarDays, Home, Trophy, Users } from "lucide-react";
+import { CalendarDays, Home, Trophy, UserRound, Users } from "lucide-react";
 
-import { SignInDialog } from "@/components/auth/sign-in-dialog";
 import { AuthButton } from "@/components/auth/auth-button";
 import { BrandMark } from "@/components/brand-mark";
 import { MobileNav } from "@/components/layout/mobile-nav";
@@ -29,7 +28,7 @@ const navItems = [
   { href: "/history", label: "History", icon: CalendarDays },
   { href: "/challenges", label: "Challenges", icon: Trophy },
   { href: "/friends", label: "Friends", icon: Users },
-  { href: "/profile", label: "Profile", icon: BarChart3 },
+  { href: "/profile", label: "Profile", icon: UserRound },
 ] as const;
 
 function getPrimaryPath(currentPath: AppShellProps["currentPath"]) {
@@ -58,7 +57,7 @@ export async function AppShell({
 }: AppShellProps) {
   const primaryPath = getPrimaryPath(currentPath);
   const profile = session?.user?.id ? await getProfileById(session.user.id) : null;
-  const showGuestBanner = !session?.user && currentPath !== "/privacy" && currentPath !== "/terms";
+  const showGuestBanner = !session?.user && currentPath === "/";
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -120,31 +119,14 @@ export async function AppShell({
         <div className="mt-4 grid gap-4">
           <OfflineNotice />
           {showGuestBanner ? (
-            <div className="glass-soft rounded-[1.5rem] border border-primary/15 px-4 py-4">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="space-y-2">
-                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Guest mode</p>
-                  <p className="text-sm leading-6 text-foreground">
-                    Your fasting progress is saved only on this device until you sign in.
-                  </p>
-                  <p className="text-xs leading-5 text-muted-foreground">
-                    Review the{" "}
-                    <Link className="underline underline-offset-4 hover:text-foreground" href="/privacy">
-                      Privacy Policy
-                    </Link>{" "}
-                    and{" "}
-                    <Link className="underline underline-offset-4 hover:text-foreground" href="/terms">
-                      Terms
-                    </Link>
-                    .
+            <div className="glass-soft rounded-[1.5rem] border border-primary/15 px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Guest mode</p>
+                  <p className="mt-1 text-sm leading-5 text-foreground">
+                    Progress stays on this device until you sign in.
                   </p>
                 </div>
-                <SignInDialog
-                  buttonClassName="w-full sm:w-auto"
-                  buttonLabel="Sign in to sync"
-                  providers={providers}
-                  variant="secondary"
-                />
               </div>
             </div>
           ) : null}

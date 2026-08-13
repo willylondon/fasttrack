@@ -56,7 +56,7 @@ export function FastingMilestoneBar({
         : null;
 
   return (
-    <div className="glass-soft rounded-[1.7rem] p-4 sm:p-5">
+    <div className="rounded-[1.25rem] p-3 sm:p-4">
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
           Estimated milestone progress
@@ -111,7 +111,7 @@ export function FastingMilestoneBar({
           </span>
         </p>
         <p className="text-muted-foreground">
-          Current stage:{" "}
+          Estimated stage:{" "}
           <span className="font-medium text-foreground">
             {currentMilestone.label} · begins at {formatStageHour(currentMilestone.hour)}
           </span>

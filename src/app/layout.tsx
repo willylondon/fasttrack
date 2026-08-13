@@ -58,7 +58,6 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
   viewportFit: "cover",
   themeColor: "#0b0b0b",
 };
@@ -69,7 +68,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark h-full" suppressHydrationWarning>
+    <html lang="en" className="dark h-full" data-scroll-behavior="smooth" suppressHydrationWarning>
       <body className="theme min-h-full font-sans">
         <PwaSupport />
         {children}

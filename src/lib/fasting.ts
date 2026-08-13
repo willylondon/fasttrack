@@ -409,6 +409,7 @@ export const MIN_PUBLIC_FAST_MINUTES = 12 * 60;
 export const MAX_PUBLIC_FAST_MINUTES = 24 * 60;
 export const MAX_MANUAL_START_BACKDATE_MINUTES = 7 * 24 * 60;
 export const MANUAL_START_CONFIRM_MINUTES = 4 * 60;
+export const OVERDUE_FAST_GRACE_MINUTES = 12 * 60;
 
 export const EMPTY_DASHBOARD_DATA: DashboardData = {
   profile: null,
@@ -538,6 +539,17 @@ export function getElapsedMinutes(session: Pick<FastSession, "startedAt"> | null
   }
 
   return Math.max(0, Math.round((now - Date.parse(session.startedAt)) / 60000));
+}
+
+export function isFastSubstantiallyOverdue(
+  session: Pick<FastSession, "plannedMinutes" | "startedAt"> | null,
+  now = Date.now()
+) {
+  if (!session) {
+    return false;
+  }
+
+  return getElapsedMinutes(session, now) - session.plannedMinutes >= OVERDUE_FAST_GRACE_MINUTES;
 }
 
 export function validateManualStartTimestamp(

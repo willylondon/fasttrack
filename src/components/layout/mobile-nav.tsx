@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BarChart3, CalendarDays, Home, Trophy, Users } from "lucide-react";
+import { CalendarDays, Home, Trophy, UserRound, Users } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -14,7 +14,7 @@ const navItems = [
   { href: "/history", label: "History", icon: CalendarDays },
   { href: "/challenges", label: "Challenges", icon: Trophy },
   { href: "/friends", label: "Friends", icon: Users },
-  { href: "/profile", label: "Profile", icon: BarChart3 },
+  { href: "/profile", label: "Profile", icon: UserRound },
 ] as const;
 
 function getPrimaryPath(currentPath: MobileNavProps["currentPath"]) {
@@ -52,20 +52,20 @@ export function MobileNav({ currentPath }: MobileNavProps) {
               prefetch={false}
               className={cn(
                 "flex min-h-[48px] flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-center transition-colors",
-                active ? "text-primary" : "text-muted-foreground"
+                active ? "text-primary-readable" : "text-muted-foreground"
               )}
             >
               <span
                 className={cn(
                   "grid size-8 place-items-center rounded-2xl transition-all",
                   active
-                    ? "bg-primary/15 text-primary shadow-[inset_0_0_0_1px_rgba(139,92,246,0.22)]"
+                    ? "bg-primary/15 text-primary-readable shadow-[inset_0_0_0_1px_rgba(139,92,246,0.22)]"
                     : "text-muted-foreground"
                 )}
               >
                 <Icon className="size-4" />
               </span>
-              <span className="max-w-full text-[8px] font-medium uppercase tracking-normal">{item.label}</span>
+              <span className="max-w-full text-[10px] font-medium tracking-normal">{item.label}</span>
             </Link>
           );
         })}

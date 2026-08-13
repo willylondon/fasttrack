@@ -248,7 +248,7 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
       <Card className="section-enter" style={{ animationDelay: "0ms" }}>
         <CardHeader>
           <div className="flex items-center gap-3">
-            <div className="rounded-2xl bg-primary/10 p-2 text-primary shadow-[0_8px_20px_rgba(139,92,246,0.16)]">
+            <div className="rounded-2xl bg-primary/10 p-2 text-primary-readable shadow-[0_8px_20px_rgba(139,92,246,0.16)]">
               <Search className="size-4" />
             </div>
             <div>
@@ -469,16 +469,16 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                           <p className="text-sm font-medium text-foreground">
                             {session.displayName ?? (session.isCurrentUser ? "You" : "FastTrack friend")}
                           </p>
-                          <span className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-accent">
+                          <span className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em] text-accent">
                             Live now
                           </span>
                           {isLeader ? (
-                            <span className="rounded-full border border-gold/25 bg-gold/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-gold">
+                            <span className="rounded-full border border-gold/25 bg-gold/10 px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em] text-gold">
                               Leading
                             </span>
                           ) : null}
                           <span
-                            className="rounded-full border bg-white/[0.04] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em]"
+                            className="rounded-full border bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em]"
                             style={{
                               borderColor: `${stage.color}55`,
                               color: stage.color,
@@ -540,13 +540,13 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                           {friend.displayName ?? (friend.isCurrentUser ? "You" : "FastTrack friend")}
                         </p>
                         {friend.isCurrentUser ? (
-                          <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-primary">
+                          <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em] text-primary-readable">
                             You
                           </span>
                         ) : null}
                         {!friend.activeSession && completedStage ? (
                           <span
-                            className="rounded-full border bg-white/[0.04] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em]"
+                            className="rounded-full border bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em]"
                             style={{
                               borderColor: `${completedStage.color}55`,
                               color: completedStage.color,

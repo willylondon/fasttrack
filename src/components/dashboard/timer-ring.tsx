@@ -33,13 +33,13 @@ export function TimerRing({ elapsedMinutes, plannedMinutes, progress, stage, act
           }}
         >
           <div className="flex size-full flex-col items-center justify-center rounded-full border border-white/[0.08] bg-[rgba(14,15,20,0.96)] text-center shadow-[0_10px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.04)] sm:shadow-[0_16px_40px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.04)]">
-            <p className="text-[0.55rem] uppercase tracking-[0.22em] text-muted-foreground sm:text-[0.68rem]">Planned {targetHours}h</p>
-            <p className="mt-2 font-[family:var(--font-heading)] text-4xl font-bold tracking-tight text-foreground sm:mt-3 sm:text-5xl">
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Planned {targetHours}h</p>
+            <p className="timer-numerals mt-2 font-[family:var(--font-heading)] text-4xl font-bold tracking-tight text-foreground sm:mt-3 sm:text-5xl">
               {durationLabel}
             </p>
             <div className="mt-2 flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.05] px-2.5 py-1 text-xs text-muted-foreground sm:mt-3 sm:px-3 sm:py-1.5 sm:text-sm">
               <span className="text-sm sm:text-base">{stage.emoji}</span>
-              <span>{active ? stage.label : "Ready when you are"}</span>
+              <span>{active ? `Estimated: ${stage.label}` : "Ready when you are"}</span>
             </div>
           </div>
         </div>

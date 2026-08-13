@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   FASTING_PRESETS,
+  isFastSubstantiallyOverdue,
   MAX_MANUAL_START_BACKDATE_MINUTES,
   MAX_PUBLIC_FAST_MINUTES,
   validateFastEndTimestamp,
@@ -41,6 +42,17 @@ test("a forgotten timer can be completed at its actual 16-hour end time", () => 
 
   assert.equal(result.valid, true);
   assert.equal(result.durationMinutes, 16 * 60);
+});
+
+test("an active fast switches to recovery after the overdue grace period", () => {
+  const startedAt = "2026-06-15T06:00:00.000Z";
+  const plannedMinutes = 16 * 60;
+  const justBeforeRecovery = Date.parse("2026-06-16T09:59:00.000Z");
+  const recoveryThreshold = Date.parse("2026-06-16T10:00:00.000Z");
+  const session = { startedAt, plannedMinutes };
+
+  assert.equal(isFastSubstantiallyOverdue(session, justBeforeRecovery), false);
+  assert.equal(isFastSubstantiallyOverdue(session, recoveryThreshold), true);
 });
 
 test("corrected end times cannot predate the fast or be in the future", () => {

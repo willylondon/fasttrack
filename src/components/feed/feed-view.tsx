@@ -94,7 +94,7 @@ export function FeedView({ initialData, providers, signedIn }: FeedViewProps) {
       <Card className="section-enter" style={{ animationDelay: "0ms" }}>
         <CardHeader>
           <div className="flex items-center gap-3">
-            <div className="rounded-2xl bg-primary/10 p-2 text-primary shadow-[0_8px_20px_rgba(139,92,246,0.16)]">
+            <div className="rounded-2xl bg-primary/10 p-2 text-primary-readable shadow-[0_8px_20px_rgba(139,92,246,0.16)]">
               <Activity className="size-4" />
             </div>
             <div>
@@ -173,7 +173,7 @@ export function FeedView({ initialData, providers, signedIn }: FeedViewProps) {
                               <p className="text-sm leading-6 text-foreground">
                                 {session.displayName ?? "A friend"} is currently fasting.
                               </p>
-                              <span className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-accent">
+                              <span className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em] text-accent">
                                 Live now
                               </span>
                             </div>
@@ -253,7 +253,7 @@ export function FeedView({ initialData, providers, signedIn }: FeedViewProps) {
           )}
           {signedIn ? (
             <div className="glass-soft flex items-start gap-3 rounded-[1.5rem] px-4 py-4 text-sm text-muted-foreground">
-              <div className="rounded-2xl bg-primary/10 p-2 text-primary">
+              <div className="rounded-2xl bg-primary/10 p-2 text-primary-readable">
                 <ArrowRight className="size-4" />
               </div>
               <p>Friend activity is for accountability, not pressure. FastTrack highlights consistency over extreme fasting.</p>
