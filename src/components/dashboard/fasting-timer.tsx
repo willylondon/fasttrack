@@ -152,6 +152,83 @@ const QUICK_END_BACKDATE_OPTIONS = [
   { label: "2h ago", minutes: 120 },
   { label: "4h ago", minutes: 240 },
 ] as const;
+const CLOCK_HOURS = Array.from({ length: 12 }, (_, index) => index + 1);
+const CLOCK_MINUTES = Array.from({ length: 60 }, (_, index) => index);
+
+type ClockPeriod = "AM" | "PM";
+
+type ClockTimeInputProps = {
+  id: string;
+  label: string;
+  value: string;
+  invalid?: boolean;
+  onChange: (value: string) => void;
+};
+
+function getClockParts(value: string) {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  const hours = match ? Number(match[1]) : 0;
+  const minutes = match ? Number(match[2]) : 0;
+
+  return {
+    hour: hours % 12 || 12,
+    minute: Math.min(Math.max(minutes, 0), 59),
+    period: (hours >= 12 ? "PM" : "AM") as ClockPeriod,
+  };
+}
+
+function buildClockValue(hour: number, minute: number, period: ClockPeriod) {
+  const hours = period === "PM" ? (hour % 12) + 12 : hour % 12;
+  return `${hours.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+}
+
+function ClockTimeInput({ id, invalid = false, label, onChange, value }: ClockTimeInputProps) {
+  const parts = getClockParts(value);
+  const selectClassName =
+    "h-11 min-w-0 cursor-pointer rounded-xl border border-white/[0.1] bg-white/[0.05] px-3 text-base text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm [&>option]:bg-background [&>option]:text-foreground";
+
+  return (
+    <div aria-label={label} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2" role="group">
+      <select
+        aria-invalid={invalid}
+        aria-label={`${label} hour`}
+        className={selectClassName}
+        id={id}
+        onChange={(event) => onChange(buildClockValue(Number(event.target.value), parts.minute, parts.period))}
+        value={parts.hour}
+      >
+        {CLOCK_HOURS.map((hour) => (
+          <option key={hour} value={hour}>
+            {hour}
+          </option>
+        ))}
+      </select>
+      <select
+        aria-invalid={invalid}
+        aria-label={`${label} minute`}
+        className={selectClassName}
+        onChange={(event) => onChange(buildClockValue(parts.hour, Number(event.target.value), parts.period))}
+        value={parts.minute}
+      >
+        {CLOCK_MINUTES.map((minute) => (
+          <option key={minute} value={minute}>
+            {minute.toString().padStart(2, "0")}
+          </option>
+        ))}
+      </select>
+      <select
+        aria-invalid={invalid}
+        aria-label={`${label} AM or PM`}
+        className={selectClassName}
+        onChange={(event) => onChange(buildClockValue(parts.hour, parts.minute, event.target.value as ClockPeriod))}
+        value={parts.period}
+      >
+        <option value="AM">AM</option>
+        <option value="PM">PM</option>
+      </select>
+    </div>
+  );
+}
 
 async function readApiError(response: Response) {
   try {
@@ -1361,17 +1438,13 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                       <label className="text-xs uppercase tracking-[0.24em] text-muted-foreground" htmlFor="start-time">
                         Start time
                       </label>
-                      <Input
+                      <ClockTimeInput
                         id="start-time"
-                        aria-invalid={Boolean(startTimeError)}
-                        type="time"
-                        autoComplete="off"
-                        enterKeyHint="done"
-                        step={60}
-                        placeholder="18:30"
+                        invalid={Boolean(startTimeError)}
+                        label="Start time"
                         value={startTimeValue}
-                        onChange={(event) => {
-                          setStartTimeValue(event.target.value);
+                        onChange={(value) => {
+                          setStartTimeValue(value);
                           setStartTimeError(null);
                         }}
                       />
@@ -1571,13 +1644,13 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                         <label className="text-xs uppercase tracking-[0.24em] text-muted-foreground" htmlFor="end-time">
                           End time
                         </label>
-                        <Input
+                        <ClockTimeInput
                           id="end-time"
-                          type="time"
-                          step={60}
+                          invalid={Boolean(endTimeError || selectedEndPreview?.error)}
+                          label="End time"
                           value={endTimeValue}
-                          onChange={(event) => {
-                            setEndTimeValue(event.target.value);
+                          onChange={(value) => {
+                            setEndTimeValue(value);
                             setEndTimeError(null);
                             setEndTimeOverride(null);
                           }}
