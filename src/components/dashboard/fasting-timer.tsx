@@ -53,6 +53,7 @@ import {
 } from "@/lib/local-dashboard";
 import { completionRetryBody, isDefinitiveCompletionRejection, parsePendingCompletions, type PendingCompletion, reconcileFastSession, resolveLocalDateTime } from "@/lib/timer-recovery";
 import { cn } from "@/lib/utils";
+import { coalesceScopedRequest, withRequestTimeout, type PendingScopedRequest } from "@/lib/scoped-request";
 
 type FastingTimerProps = {
   initialData: DashboardData;
@@ -488,6 +489,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   const mutationRef = useRef(false);
   const generationRef = useRef(0);
   const refreshSequenceRef = useRef(0);
+  const dashboardRequestRef = useRef<PendingScopedRequest<DashboardData | undefined> | null>(null);
   const accountRef = useRef(userId);
 
   const startOperationRef = useRef<string | null>(null);
@@ -502,6 +504,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     setSyncError(null);
     generationRef.current++;
     lastDashboardRefreshRef.current = 0;
+    dashboardRequestRef.current = null;
     startOperationRef.current = null;
     setPendingCompletions(userId ? parsePendingCompletions(safeStorageRead("localStorage", `fasttrack:pending-rewards:${userId}`), userId) : []);
     return () => { accountRef.current = undefined; };
@@ -607,31 +610,36 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     }
 
     const generation = generationRef.current;
-    const sequence = ++refreshSequenceRef.current;
     const account = userId;
+    return coalesceScopedRequest(dashboardRequestRef, { account, generation }, async () => {
+      if (accountRef.current !== account || generationRef.current !== generation) return undefined;
+      const sequence = ++refreshSequenceRef.current;
+      try {
+        return await withRequestTimeout(async (signal) => {
+          const response = await fetch("/api/dashboard", {
+            method: "GET",
+            headers: { "X-FastTrack-Account": account },
+            cache: "no-store",
+            signal,
+          });
 
-    try {
-      const response = await fetch("/api/dashboard", {
-        method: "GET",
-        headers: { "X-FastTrack-Account": account },
-        cache: "no-store",
-      });
+          if (!response.ok) {
+            throw new Error(await readApiError(response));
+          }
 
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
+          const nextDashboard = (await response.json()) as DashboardData;
+          if (signal.aborted || accountRef.current !== account || generation !== generationRef.current || sequence !== refreshSequenceRef.current) return undefined;
+          lastDashboardRefreshRef.current = Date.now();
+          setDashboardData(nextDashboard);
+          return nextDashboard;
+        });
+      } catch (error) {
+        if (!options?.quiet && accountRef.current === account && generationRef.current === generation) {
+          toast.error(error instanceof Error ? error.message : "Dashboard refresh failed.");
+        }
+        return undefined;
       }
-
-      const nextDashboard = (await response.json()) as DashboardData;
-      if (accountRef.current !== account || generation !== generationRef.current || sequence !== refreshSequenceRef.current) return undefined;
-      lastDashboardRefreshRef.current = Date.now();
-      setDashboardData(nextDashboard);
-      return nextDashboard;
-    } catch (error) {
-      if (!options?.quiet) {
-        toast.error(error instanceof Error ? error.message : "Dashboard refresh failed.");
-      }
-      return undefined;
-    }
+    }, { forceFresh: options?.force });
   }, [userId]);
 
   useEffect(() => {

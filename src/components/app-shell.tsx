@@ -8,6 +8,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { NavigationPending } from "@/components/layout/navigation-pending";
 import { InstallPrompt } from "@/components/system/install-prompt";
+import { PerformanceCheckButton } from "@/components/system/performance-diagnostics";
 import { OfflineNotice } from "@/components/system/offline-notice";
 import { Separator } from "@/components/ui/separator";
 import { getProfileById } from "@/lib/fasting-data";
@@ -157,6 +158,8 @@ export function AppShell({
             </Link>
             <span>•</span>
             <a href="mailto:willardwells@gmail.com" className="inline-flex min-h-11 items-center transition-colors hover:text-foreground">Support</a>
+            <span>•</span>
+            <PerformanceCheckButton />
           </div>
         </footer>
       </div>
