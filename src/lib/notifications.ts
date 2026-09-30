@@ -1,5 +1,3 @@
-"use server";
-
 import "server-only";
 
 import webPush from "web-push";
