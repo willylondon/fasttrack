@@ -58,7 +58,6 @@ export type SocialProfile = {
   id: string;
   displayName: string | null;
   avatarUrl: string | null;
-  email?: string | null;
 };
 
 export type FeedEvent = {

@@ -426,8 +426,7 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
   const leaderboardIds = Array.from(new Set([userId, ...friendIds]));
   const lookupIds = Array.from(new Set([...incomingIds, ...outgoingIds, ...leaderboardIds]));
   const profilesById = await getProfilesById(lookupIds, true);
-  const [emailLookup, liveSessions, latestCompletedSessions, encouragementSummary] = await Promise.all([
-    getEmailsById([...incomingIds, ...outgoingIds]),
+  const [liveSessions, latestCompletedSessions, encouragementSummary] = await Promise.all([
     getActiveFriendSessions(leaderboardIds, userId, profilesById),
     getLatestCompletedFriendSessions(leaderboardIds),
     getEncouragementSummary(leaderboardIds),
@@ -447,8 +446,9 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
         id: request.id,
         createdAt: request.created_at,
         sender: {
-          ...sender,
-          email: emailLookup.get(request.sender_id) ?? null,
+          id: sender.id,
+          displayName: sender.displayName,
+          avatarUrl: sender.avatarUrl,
         },
       };
     })
@@ -466,8 +466,9 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
         id: request.id,
         createdAt: request.created_at,
         receiver: {
-          ...receiver,
-          email: emailLookup.get(request.receiver_id) ?? null,
+          id: receiver.id,
+          displayName: receiver.displayName,
+          avatarUrl: receiver.avatarUrl,
         },
       };
     })
@@ -1033,7 +1034,7 @@ export async function createFriendRequest(userId: string, targetUserId: string) 
   const targetResult = await supabase
     .schema("next_auth")
     .from("users")
-    .select("id,email,name,image")
+    .select("id")
     .eq("id", targetUserId)
     .maybeSingle();
 
@@ -1565,7 +1566,7 @@ async function getActiveFriendSessions(
 
     const isCurrentUser = currentUserId === session.user_id;
 
-    if (!isCurrentUser && profile?.shareLiveStatus === false) {
+    if (!isCurrentUser && profile?.shareLiveStatus !== true) {
       continue;
     }
 
@@ -1759,31 +1760,6 @@ async function getEncouragementSummary(userIds: string[]) {
   return { available: true, counts: countMap };
 }
 
-async function getEmailsById(userIds: string[]) {
-  const ids = Array.from(new Set(userIds.filter(Boolean)));
-  const emailLookup = new Map<string, string | null>();
-
-  if (!ids.length) {
-    return emailLookup;
-  }
-
-  const emailResult = await createAdminClient()
-    .schema("next_auth")
-    .from("users")
-    .select("id,email")
-    .in("id", ids);
-
-  if (emailResult.error) {
-    throw emailResult.error;
-  }
-
-  for (const user of emailResult.data ?? []) {
-    emailLookup.set(user.id, user.email);
-  }
-
-  return emailLookup;
-}
-
 export async function getProfileById(userId: string) {
   const profileResult = await createAdminClient()
     .from("profiles")
@@ -1924,7 +1900,9 @@ function buildLeaderboardEntries(
       currentStreak: profile.currentStreak,
       stat: statMap.get(profile.id) ?? 0,
       supportingStat: `${completionMap.get(profile.id) ?? 0} completed`,
-      currentStage: activeStageMap.get(profile.id) ?? null,
+      currentStage: currentUserId === profile.id || profile.shareLiveStatus === true
+        ? activeStageMap.get(profile.id) ?? null
+        : null,
       lastCompletedStage: lastCompletedStageMap.get(profile.id) ?? null,
       encouragementCount: encouragementCounts.get(profile.id) ?? 0,
       isCurrentUser: currentUserId === profile.id,

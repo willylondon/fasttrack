@@ -346,9 +346,9 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                         <AvatarFallback>{getInitials(request.sender.displayName)}</AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="text-sm font-medium text-foreground">{request.sender.displayName ?? request.sender.email}</p>
+                        <p className="text-sm font-medium text-foreground">{request.sender.displayName ?? "FastTrack member"}</p>
                         <p className="text-xs text-muted-foreground">
-                          {request.sender.email ?? "FastTrack member"} • {formatDistanceToNow(new Date(request.createdAt), { addSuffix: true })}
+                          {formatDistanceToNow(new Date(request.createdAt), { addSuffix: true })}
                         </p>
                       </div>
                     </div>
@@ -393,9 +393,9 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                         <AvatarFallback>{getInitials(request.receiver.displayName)}</AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="text-sm font-medium text-foreground">{request.receiver.displayName ?? request.receiver.email}</p>
+                        <p className="text-sm font-medium text-foreground">{request.receiver.displayName ?? "FastTrack member"}</p>
                         <p className="text-xs text-muted-foreground">
-                          {request.receiver.email ?? "FastTrack member"} • sent {formatDistanceToNow(new Date(request.createdAt), { addSuffix: true })}
+                          Sent {formatDistanceToNow(new Date(request.createdAt), { addSuffix: true })}
                         </p>
                       </div>
                     </div>
