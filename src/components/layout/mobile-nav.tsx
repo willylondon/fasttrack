@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CalendarDays, Home, Trophy, UserRound, Users } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { NavigationPending } from "@/components/layout/navigation-pending";
 
 type MobileNavProps = {
   currentPath: string;
@@ -49,9 +50,8 @@ export function MobileNav({ currentPath }: MobileNavProps) {
               aria-current={active ? "page" : undefined}
               key={item.href}
               href={item.href}
-              prefetch={false}
               className={cn(
-                "flex min-h-[48px] flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-center transition-colors",
+                "relative flex min-h-[48px] flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-center transition-colors",
                 active ? "text-primary-readable" : "text-muted-foreground"
               )}
             >
@@ -66,6 +66,7 @@ export function MobileNav({ currentPath }: MobileNavProps) {
                 <Icon className="size-4" />
               </span>
               <span className="max-w-full text-[11px] font-medium tracking-normal">{item.label}</span>
+              <NavigationPending />
             </Link>
           );
         })}

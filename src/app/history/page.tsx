@@ -18,6 +18,7 @@ export default async function HistoryPage() {
       description="Review your consistency, see how your windows are trending, and revisit recent sessions."
       providers={authProviders}
       session={session}
+      profile={history.profile}
       title="Your history, clearly laid out."
     >
       <HistoryView initialData={history} providers={authProviders} signedIn={Boolean(session?.user?.id)} />

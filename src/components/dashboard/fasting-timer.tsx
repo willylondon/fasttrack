@@ -2,12 +2,13 @@
 
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
-import { Check, ChevronDown, Clock3, Flag, PencilLine, Share2, ShieldAlert, X } from "lucide-react";
+import { Check, ChevronDown, Clock3, Flag, LoaderCircle, PencilLine, Share2, ShieldAlert, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { FastingMilestoneBar } from "@/components/dashboard/fasting-milestone-bar";
 import { ShareFastCard } from "@/components/dashboard/share-fast-card";
 import { TimerRing } from "@/components/dashboard/timer-ring";
+import { WeekActivity } from "@/components/dashboard/week-activity";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -66,13 +67,14 @@ type StartDialogMode = "start" | "edit" | null;
 type WindowOptionLabel = (typeof WINDOW_OPTIONS)[number]["label"];
 
 type CompletionSummary = {
+  sessionId?: string;
   durationMinutes: number;
   stage: FastingStage;
   startedAt: string;
   endedAt: string;
   plannedMinutes: number;
-  currentStreak: number;
-  totalFasts: number;
+  currentStreak: number | null;
+  totalFasts: number | null;
   xpGained: number;
   badges: BadgeDefinition[];
 };
@@ -297,6 +299,8 @@ function formatDateDraft(value: string) {
 const resolveManualStartTimeFromDraft = resolveLocalDateTime;
 
 type LiveTimerPanelProps = {
+  sessions: DashboardData["sessions"];
+  historyReady: boolean;
   activeSession: DashboardData["activeSession"];
   plannedMinutes: number;
   selectedWindow: WindowOptionLabel;
@@ -308,6 +312,8 @@ type LiveTimerPanelProps = {
 };
 
 function LiveTimerPanel({
+  sessions,
+  historyReady,
   activeSession,
   plannedMinutes,
   selectedWindow,
@@ -317,19 +323,20 @@ function LiveTimerPanel({
   onPendingAction,
   onStageReached,
 }: LiveTimerPanelProps) {
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(0);
+  const [planPickerOpen, setPlanPickerOpen] = useState(false);
+  const planSummaryRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    if (!activeSession) {
-      return;
-    }
+    const updateClock = () => setNow(Date.now());
+    updateClock();
+    const timer = window.setInterval(updateClock, activeSession ? 1000 : 60_000);
+    window.addEventListener("focus", updateClock);
 
-    setNow(Date.now());
-    const timer = window.setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
-
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", updateClock);
+    };
   }, [activeSession]);
 
   const elapsedMinutes = getElapsedMinutes(activeSession, now);
@@ -340,13 +347,6 @@ function LiveTimerPanel({
   const needsOverdueResolution = isFastSubstantiallyOverdue(activeSession, now);
   const statusLabel = getStatusLabel(Boolean(activeSession), currentStage, remainingMinutes);
   const hourlyCheckIn = getHourlyCheckIn(elapsedMinutes / 60, Boolean(activeSession));
-  const nextMilestone = FASTING_STAGES.find((stage) => stage.hour * 60 > elapsedMinutes);
-  const timerMetrics = [
-    { label: "Window", value: formatCompactDuration(activeSession?.plannedMinutes ?? plannedMinutes) },
-    { label: "Est. stage", value: activeSession ? currentStage.label : "Ready" },
-    { label: activeSession ? "Remaining" : "Starts", value: activeSession ? formatCompactDuration(remainingMinutes) : "Now" },
-    { label: "Next", value: nextMilestone ? `${formatStageHour(nextMilestone.hour)} ${nextMilestone.label}` : "Complete" },
-  ];
 
   useEffect(() => {
     if (!activeSession || currentStageIndex === 0) {
@@ -356,172 +356,105 @@ function LiveTimerPanel({
     onStageReached(currentStageIndex);
   }, [activeSession, currentStageIndex, onStageReached]);
 
+  const targetAt = activeSession
+    ? new Date(Date.parse(activeSession.startedAt) + activeSession.plannedMinutes * 60000)
+    : null;
+
   return (
-    <>
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)] lg:items-center lg:gap-6">
-        <div className="contents lg:block">
-          <TimerRing
-            active={Boolean(activeSession)}
-            elapsedMinutes={elapsedMinutes}
-            plannedMinutes={activeSession?.plannedMinutes ?? plannedMinutes}
-            progress={activeSession ? progress : 0}
-            stage={currentStage}
-          />
-          <div className="premium-rail order-3 mt-2 grid grid-cols-2 gap-1 rounded-[1.25rem] p-2 sm:grid-cols-4 lg:order-none lg:grid-cols-2">
-            {timerMetrics.map((metric) => (
-              <div key={metric.label} className="rounded-2xl px-3 py-2">
-                <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                  {metric.label}
-                </p>
-                <p className="timer-numerals mt-1 truncate text-sm font-semibold text-foreground">{metric.value}</p>
-              </div>
-            ))}
-          </div>
-        </div>
+    <div className="space-y-3">
+      <WeekActivity sessions={sessions} now={now} ready={historyReady && now > 0} />
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.05fr)_minmax(260px,0.95fr)] lg:items-center lg:gap-6">
+        <TimerRing
+          active={Boolean(activeSession)}
+          elapsedMinutes={elapsedMinutes}
+          elapsedSeconds={activeSession ? (now - Date.parse(activeSession.startedAt)) / 1000 : 0}
+          plannedMinutes={activeSession?.plannedMinutes ?? plannedMinutes}
+          progress={activeSession ? progress : 0}
+          stage={currentStage}
+        />
 
-        <div className="order-2 space-y-4 lg:order-none">
-          {needsOverdueResolution ? (
-            <div className="rounded-[1.3rem] border border-amber-400/30 bg-amber-400/10 px-4 py-3" role="status">
-              <p className="text-sm leading-5 text-amber-100">
-                <span className="font-semibold">This fast is well past its plan.</span>{" "}
-                Resolve it so your history stays accurate.
-              </p>
-            </div>
-          ) : null}
-
-          <div className="grid gap-3">
-            {!activeSession ? (
-              <Button
-                className="h-12 w-full text-base font-semibold text-white"
+        <div className="space-y-3">
+          {activeSession && targetAt ? (
+            <div className="premium-rail grid grid-cols-2 divide-x divide-white/[0.08] rounded-2xl py-2">
+              <button
+                aria-label={now ? `Edit start time, ${format(new Date(activeSession.startedAt), "EEE, MMM d, p")}` : "Edit start time"}
+                className="group min-h-11 min-w-0 px-3 text-left disabled:opacity-50"
                 disabled={isMutatingFast}
-                onClick={() => onOpenStartTimeDialog("start")}
-                size="lg"
+                onClick={() => onOpenStartTimeDialog("edit")}
+                type="button"
               >
-                <Flag className="size-4" />
-                Start fast
-              </Button>
-            ) : (
-              <>
-                <Button
-                  className="h-12 w-full text-base font-semibold text-white"
-                  disabled={isMutatingFast}
-                  onClick={() => onPendingAction("complete")}
-                  size="lg"
-                >
-                  <Check className="size-4" />
-                  {needsOverdueResolution ? "Resolve overdue fast" : "End fast"}
-                </Button>
-                <Button
-                  className="h-11 w-full"
-                  disabled={isMutatingFast}
-                  onClick={() => onOpenStartTimeDialog("edit")}
-                  size="lg"
-                  variant="outline"
-                >
-                  <PencilLine className="size-4" />
-                  Edit start time
-                </Button>
-                <button
-                  className="min-h-[44px] text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-                  disabled={isMutatingFast}
-                  onClick={() => onPendingAction("cancel")}
-                  type="button"
-                >
-                  Cancel fast
-                </button>
-              </>
-            )}
-          </div>
-
-          {!activeSession ? (
-            <div className="glass-soft rounded-[1.7rem] p-4 sm:p-5">
-              <div className="space-y-3">
-                <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Choose a window</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {WINDOW_OPTIONS.map((option) => {
-                    const active = option.label === selectedWindow;
-
-                    return (
-                      <button
-                        aria-pressed={active}
-                        className={cn(
-                          "min-h-[48px] rounded-2xl border px-3 py-3 text-sm font-medium transition-colors",
-                          active
-                            ? "border-primary bg-primary/15 text-primary-readable shadow-[0_12px_26px_rgba(139,92,246,0.18)]"
-                            : "border-white/[0.08] bg-white/[0.04] text-foreground hover:border-white/[0.14]"
-                        )}
-                        key={option.label}
-                        onClick={() => onSelectWindow(option.label)}
-                        type="button"
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Planned window: <span className="font-medium text-foreground">{formatCompactDuration(plannedMinutes)}</span>
-                </p>
-                {plannedMinutes >= 18 * 60 ? (
-                  <p className="rounded-[1.1rem] border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-xs leading-5 text-amber-100">
-                    Extended windows from 18h to 24h need extra care. Stay within your plan and stop if you feel unwell.
-                  </p>
-                ) : null}
-                <div className="rounded-[1.3rem] border border-white/[0.08] bg-black/20 px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Current status</p>
-                  <p className="mt-2 text-base font-medium text-foreground">{statusLabel}</p>
-                </div>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  Choose <span className="font-medium text-foreground">Now</span> or set the date and time if your
-                  fasting window began before you opened FastTrack.
-                </p>
+                <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Started <PencilLine aria-hidden="true" className="size-3" /></span>
+                <span className="timer-numerals mt-1 block text-sm font-semibold text-foreground group-hover:text-primary-readable">{now ? format(new Date(activeSession.startedAt), "EEE, p") : "—"}</span>
+              </button>
+              <div className="min-w-0 px-3 py-1">
+                <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{formatCompactDuration(activeSession.plannedMinutes)} target</p>
+                <time dateTime={targetAt.toISOString()} className="timer-numerals mt-1 block text-sm font-semibold text-foreground">{now ? format(targetAt, "EEE, p") : "—"}</time>
               </div>
             </div>
           ) : (
-            <div className="premium-rail grid grid-cols-2 gap-x-5 gap-y-4 rounded-[1.4rem] px-4 py-4">
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Started</p>
-                <p className="timer-numerals mt-1 text-base font-medium text-foreground">{formatTime(activeSession.startedAt)}</p>
-              </div>
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Planned end</p>
-                <p className="timer-numerals mt-1 text-base font-medium text-foreground">
-                  {formatTime(new Date(Date.parse(activeSession.startedAt) + activeSession.plannedMinutes * 60000).toISOString())}
-                </p>
-              </div>
-            </div>
+            <details className="group/plan premium-rail rounded-2xl" open={planPickerOpen} onToggle={(event) => setPlanPickerOpen(event.currentTarget.open)}>
+              <summary ref={planSummaryRef} className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-2 text-sm marker:content-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-readable">
+                <span><span className="font-semibold text-foreground">{formatCompactDuration(plannedMinutes)} plan</span><span className="ml-2 text-muted-foreground">Change</span></span>
+                <ChevronDown aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-open/plan:rotate-180" />
+              </summary>
+              <fieldset disabled={isMutatingFast} className="min-w-0 space-y-3 border-t border-white/[0.08] p-3">
+                <legend className="sr-only">Choose a fasting window</legend>
+                <div className="grid grid-cols-4 gap-2">
+                  {WINDOW_OPTIONS.map((option) => (
+                    <button
+                      aria-pressed={option.label === selectedWindow}
+                      className={cn("min-h-11 rounded-xl border px-2 text-sm font-medium transition-colors disabled:opacity-50", option.label === selectedWindow ? "border-primary bg-primary/15 text-primary-readable" : "border-white/[0.08] bg-white/[0.04] text-foreground hover:bg-white/[0.08]")}
+                      key={option.label}
+                      onClick={() => { onSelectWindow(option.label); setPlanPickerOpen(false); planSummaryRef.current?.focus(); }}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs leading-5 text-muted-foreground">Choose the window that fits your plan. You can set an earlier start next.</p>
+              </fieldset>
+            </details>
           )}
 
-          <div className="premium-rail rounded-[1.25rem] px-4 py-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Coach note</p>
-              <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-                {activeSession ? `Hour ${Math.floor(elapsedMinutes / 60)}` : "Before you start"}
-              </span>
-            </div>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-base">{hourlyCheckIn}</p>
-          </div>
+          {needsOverdueResolution ? (
+            <p className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm leading-5 text-amber-100" role="status">
+              This fast is well past its plan. Resolve it to keep your history accurate.
+            </p>
+          ) : !activeSession && plannedMinutes >= 18 * 60 ? (
+            <p className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-xs leading-5 text-amber-100">
+              Extended windows need extra care. Stay within your plan and stop if you feel unwell.
+            </p>
+          ) : null}
 
+          <Button
+            className="h-12 w-full text-base font-semibold text-white"
+            disabled={isMutatingFast}
+            aria-busy={isMutatingFast}
+            onClick={() => activeSession ? onPendingAction("complete") : onOpenStartTimeDialog("start")}
+            size="lg"
+          >
+            {isMutatingFast ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin" /> : activeSession ? <Check aria-hidden="true" className="size-4" /> : <Flag aria-hidden="true" className="size-4" />}
+            {isMutatingFast ? "Saving…" : activeSession ? needsOverdueResolution ? "Resolve overdue fast" : "End fast" : "Start fast"}
+          </Button>
         </div>
       </div>
 
       {activeSession ? (
-        <details className="group rounded-[1.5rem] border border-white/[0.08] bg-white/[0.025]">
-          <summary className="flex min-h-[48px] cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-foreground marker:content-none">
-            <span>View estimated milestone timeline</span>
-            <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+        <details className="group/details rounded-2xl border border-white/[0.08] bg-white/[0.025]">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-2 text-sm text-muted-foreground marker:content-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-readable">
+            <span>Session details</span>
+            <ChevronDown aria-hidden="true" className="size-4 transition-transform group-open/details:rotate-180" />
           </summary>
-          <div className="border-t border-white/[0.08] p-2">
-            <FastingMilestoneBar
-              active
-              elapsedMinutes={elapsedMinutes}
-              plannedMinutes={activeSession.plannedMinutes}
-              startedAt={activeSession.startedAt}
-            />
+          <div className="space-y-3 border-t border-white/[0.08] p-3">
+            <p className="text-sm font-medium text-foreground">{statusLabel}</p>
+            <p className="text-sm leading-6 text-muted-foreground">{hourlyCheckIn}</p>
+            <FastingMilestoneBar active elapsedMinutes={elapsedMinutes} plannedMinutes={activeSession.plannedMinutes} startedAt={activeSession.startedAt} />
+            <Button className="min-h-11 w-full" disabled={isMutatingFast} onClick={() => onPendingAction("cancel")} variant="outline">Cancel fast</Button>
           </div>
         </details>
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -1137,7 +1070,8 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         remaining = remaining.filter((entry) => entry.sessionId !== intent.sessionId);
         savePendingCompletions(remaining, account);
       }
-      await refreshDashboard({ force: true, quiet: true });
+      // The mutation already confirmed persistence and rewards. Revalidation is optional.
+      void refreshDashboard({ force: true, quiet: true });
       if (accountRef.current === account) toast.success("Completion and rewards confirmed.");
     } catch (error) {
       if (accountRef.current === account) toast.error(error instanceof Error ? error.message : "Completion could not be confirmed yet.");
@@ -1255,6 +1189,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         session: DashboardData["sessions"][number];
         gamification?: FastCompletionGamification;
         rewardsPending?: boolean;
+        progress?: { currentStreak: number; totalFasts: number };
       };
       const finishedSession = payload.session;
       if (accountRef.current !== account) return;
@@ -1268,20 +1203,34 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
       setPendingAction(null);
       setActiveMilestoneIndex(null);
 
-      const nextDashboard = await refreshDashboard({ force: true, quiet: true });
-      if (accountRef.current !== account) return;
-      if (!nextDashboard) toast.warning("Fast saved. Account totals will refresh when your connection returns.");
+      // Present the confirmed result now; optional account refresh must not keep
+      // Start/End disabled. Its existing account/generation guard rejects stale data.
+      const refreshGeneration = generationRef.current;
+      void refreshDashboard({ force: true, quiet: true }).then((nextDashboard) => {
+        if (accountRef.current !== account || generationRef.current !== refreshGeneration) return;
+        if (!nextDashboard) {
+          toast.warning("Fast saved. Account totals will refresh when your connection returns.");
+          return;
+        }
+        if (nextDashboard.profile) {
+          const profile = nextDashboard.profile;
+          setCompletionSummary((current) => current?.sessionId === finishedSession.id
+            ? { ...current, currentStreak: profile.currentStreak, totalFasts: profile.totalFasts }
+            : current);
+        }
+      });
 
       if (action === "complete" && finishedSession) {
         const stage = getStageForMinutes(finishedSession.durationMinutes ?? 0);
         setCompletionSummary({
+          sessionId: finishedSession.id,
           durationMinutes: finishedSession.durationMinutes ?? 0,
           stage,
           startedAt: finishedSession.startedAt,
           endedAt: finishedSession.endedAt ?? new Date().toISOString(),
           plannedMinutes: finishedSession.plannedMinutes,
-          currentStreak: nextDashboard?.profile?.currentStreak ?? dashboardData.profile?.currentStreak ?? 0,
-          totalFasts: nextDashboard?.profile?.totalFasts ?? (dashboardData.profile?.totalFasts ?? 0) + 1,
+          currentStreak: payload.progress?.currentStreak ?? null,
+          totalFasts: payload.progress?.totalFasts ?? null,
           xpGained: payload.gamification?.xpGained ?? 0,
           badges: payload.gamification?.newlyEarnedBadges ?? [],
         });
@@ -1366,6 +1315,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+      <p className="sr-only" role="status">{isMutatingFast ? "Saving your fast. Please wait." : ""}</p>
       {storageWarning ? <p role="alert" className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm">{signedIn ? "Device storage is unavailable. Your saved fasts are safe, but pending retries may not survive closing this page." : "Device storage is unavailable. Progress is only kept while this page stays open."}</p> : null}
       {pendingCompletions.length ? <div role="status" className="rounded-xl border border-primary/30 p-3 text-sm"><p>A completion or reward update still needs confirmation. Retry to check its status.</p><Button className="mt-2" disabled={isMutatingFast} onClick={() => void retryPendingRewards()} variant="outline">Retry completion</Button></div> : null}
       {syncError ? <div role="alert" className="rounded-xl border border-amber-400/30 p-3 text-sm"><p>{syncError}</p><Button className="mt-2" disabled={isMutatingFast} onClick={() => setSyncAttempt((value) => value + 1)} variant="outline">Retry sync</Button></div> : null}
@@ -1376,7 +1326,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
             <div>
               <Badge className="w-fit">Private beta preview</Badge>
               <h2 className="mt-4 font-[family:var(--font-heading)] text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-                Track a safer fasting window before you create an account.
+                Track your fasting window
               </h2>
               <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground sm:text-base">
                 Try the FastTrack timer locally, review milestone guidance, and sync later when you are ready.
@@ -1397,26 +1347,19 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
           </CardContent>
         </Card>
       ) : null}
-      <Card className="order-1 surface-primary section-enter relative overflow-hidden" style={{ animationDelay: "0ms" }}>
+      <Card className="order-1 surface-primary section-enter relative overflow-hidden py-0 hover:translate-y-0" style={{ animationDelay: "0ms" }}>
         <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-        <CardContent className="space-y-5 p-4 sm:p-6">
-          <div className="flex flex-col gap-3">
-            <div className="space-y-2">
-              <Badge className="hidden w-fit sm:inline-flex">Today</Badge>
-              <div>
-                <h2 className="font-[family:var(--font-heading)] text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-                  {activeSession ? "Current fast" : "Ready to start"}
-                </h2>
-                <p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground sm:mt-2 sm:text-base">
-                  {activeSession
-                    ? "Track the window you planned, stay steady, and end the session when it matches your routine."
-                  : "Choose your window and begin when ready."}
-                </p>
-              </div>
-            </div>
+        <CardContent className="space-y-3 p-3 sm:p-5">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-[family:var(--font-heading)] text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+              {activeSession ? "Current fast" : "Your fasting window"}
+            </h2>
+            <span className="text-xs text-muted-foreground">{activeSession ? "In progress" : "Not started"}</span>
           </div>
 
           <LiveTimerPanel
+            sessions={dashboardData.sessions}
+            historyReady={localDashboardReady}
             activeSession={activeSession}
             isMutatingFast={isMutatingFast}
             onOpenStartTimeDialog={openStartTimeDialog}
@@ -1634,9 +1577,9 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
               <Button onClick={closeStartTimeDialog} variant="outline">
                 Keep current
               </Button>
-              <Button disabled={isMutatingFast} onClick={() => void submitStartTimeChange()}>
-                <Clock3 className="mr-2 size-4" />
-                {startDialogMode === "start" ? "Start fast" : "Save start time"}
+              <Button disabled={isMutatingFast} aria-busy={isMutatingFast} onClick={() => void submitStartTimeChange()}>
+                {isMutatingFast ? <LoaderCircle aria-hidden="true" className="mr-2 size-4 animate-spin" /> : <Clock3 aria-hidden="true" className="mr-2 size-4" />}
+                {isMutatingFast ? startDialogMode === "start" ? "Starting…" : "Saving…" : startDialogMode === "start" ? "Start fast" : "Save start time"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1669,9 +1612,11 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
               </Button>
               <Button
                 disabled={isMutatingFast}
+                aria-busy={isMutatingFast}
                 onClick={() => void applyStartTimeChange(pendingStartAdjustment)}
               >
-                Confirm adjustment
+                {isMutatingFast ? <LoaderCircle aria-hidden="true" className="mr-2 size-4 animate-spin" /> : null}
+                {isMutatingFast ? "Saving…" : "Confirm adjustment"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1820,6 +1765,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
               </Button>
               <Button
                 disabled={isMutatingFast}
+                aria-busy={isMutatingFast}
                 onClick={() => {
                   if (pendingAction === "complete") {
                     if (!selectedEndPreview?.endedAt || selectedEndPreview.error) {
@@ -1835,7 +1781,8 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                 }}
                 variant={pendingAction === "complete" ? "default" : "destructive"}
               >
-                {pendingAction === "complete" ? "Save completed fast" : "Confirm cancel"}
+                {isMutatingFast ? <LoaderCircle aria-hidden="true" className="mr-2 size-4 animate-spin" /> : null}
+                {isMutatingFast ? pendingAction === "complete" ? "Saving…" : "Cancelling…" : pendingAction === "complete" ? "Save completed fast" : "Confirm cancel"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1938,14 +1885,14 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                 <div>
                   <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Current streak</p>
                   <p className="mt-2 font-[family:var(--font-heading)] text-3xl font-bold text-foreground">
-                    {completionSummary.currentStreak}
+                    {completionSummary.currentStreak ?? "Updating"}
                   </p>
                 </div>
               </div>
               <div className="glass-soft rounded-[1.5rem] px-4 py-4">
                 <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Total fasts</p>
                 <p className="mt-2 font-[family:var(--font-heading)] text-3xl font-bold text-foreground">
-                  {completionSummary.totalFasts}
+                  {completionSummary.totalFasts ?? "Updating"}
                 </p>
               </div>
               {completionSummary.badges.length ? (

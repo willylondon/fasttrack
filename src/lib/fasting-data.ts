@@ -149,7 +149,7 @@ export async function getHistoryData(userId: string | null | undefined): Promise
   }
 
   const supabase = createAdminClient();
-  const [profileResult, sessionsResult, checkIns] = await Promise.all([
+  const [profileResult, sessionsResult, checkIns, computedProfile] = await Promise.all([
     supabase.from("profiles").select(PROFILE_COLUMNS).eq("id", userId).maybeSingle(),
     supabase
       .from("fast_sessions")
@@ -160,6 +160,7 @@ export async function getHistoryData(userId: string | null | undefined): Promise
       .order("created_at", { ascending: false })
       .limit(120),
     getDailyCheckIns(userId),
+    getComputedProfileFields(userId),
   ]);
 
   if (profileResult.error) {
@@ -174,7 +175,7 @@ export async function getHistoryData(userId: string | null | undefined): Promise
     profile: profileResult.data
       ? {
           ...mapProfile(profileResult.data),
-          ...(await getComputedProfileFields(userId)),
+          ...computedProfile,
         }
       : null,
     sessions: (sessionsResult.data ?? []).map(mapFastSession),
@@ -285,7 +286,7 @@ export async function getProfilePageData(userId: string | null | undefined): Pro
 
   const supabase = createAdminClient();
 
-  const [profileResult, badgeResult, userBadgeResult, activityResult, notificationInbox] = await Promise.all([
+  const [profileResult, badgeResult, userBadgeResult, activityResult, notificationInbox, subscriptionResult, computedProfile] = await Promise.all([
     supabase.from("profiles").select(PROFILE_COLUMNS).eq("id", userId).single(),
     supabase.from("badges").select("*").order("name"),
     supabase
@@ -300,12 +301,9 @@ export async function getProfilePageData(userId: string | null | undefined): Pro
       .order("created_at", { ascending: false })
       .limit(12),
     getAppNotifications(userId, 8),
+    supabase.from("push_subscriptions").select("id").eq("user_id", userId).limit(1),
+    getComputedProfileFields(userId),
   ]);
-  const subscriptionResult = await supabase
-    .from("push_subscriptions")
-    .select("id")
-    .eq("user_id", userId)
-    .limit(1);
 
   if (profileResult.error) {
     throw profileResult.error;
@@ -325,7 +323,7 @@ export async function getProfilePageData(userId: string | null | undefined): Pro
 
   const profile = {
     ...mapProfile(profileResult.data),
-    ...(await getComputedProfileFields(userId)),
+    ...computedProfile,
   };
   const liveStatusSharingSupported = "share_live_status" in profileResult.data;
 
@@ -768,14 +766,19 @@ export async function updateFast(
     if (!result.data) throw new Error("Fast session not found.");
     return result.data;
   };
-  let saved = await readSession();
+  const [initialSession, initialProfile] = await Promise.all([
+    readSession(),
+    action === "complete"
+      ? getProfileById(userId).catch((error) => {
+          console.error("Pre-completion profile read failed", error);
+          return null;
+        })
+      : null,
+  ]);
+  let saved = initialSession;
   const nextStatus: FastStatus = action === "complete" ? "completed" : "cancelled";
   let transitioned = false;
-  let previousStreak: number | undefined;
-  if (action === "complete" && saved.status === "active") {
-    try { previousStreak = (await getProfileById(userId))?.currentStreak; }
-    catch (error) { console.error("Pre-completion profile read failed", error); }
-  }
+  const previousStreak = saved.status === "active" ? initialProfile?.currentStreak : undefined;
   if (saved.status !== "active" && saved.status !== nextStatus) {
     throw new FastConflictError("This fast already ended with a different action.");
   }
@@ -802,6 +805,7 @@ export async function updateFast(
     }
   }
   let gamification: FastCompletionGamification | undefined;
+  let progress: { currentStreak: number; totalFasts: number } | undefined;
   let rewardsPending = false;
   let completedStreak: number | undefined;
   if (action === "complete") {
@@ -810,6 +814,7 @@ export async function updateFast(
       const previousProfile = await getProfileById(userId);
       if (previousProfile) {
         completedStreak = previousProfile.currentStreak;
+        progress = { currentStreak: previousProfile.currentStreak, totalFasts: previousProfile.totalFasts };
         const baseXp = xpForFasting(saved.duration_minutes ?? 0, saved.stage_reached, previousProfile.currentStreak);
         const reward = await supabase.from("xp_transactions").upsert({
           user_id: userId, amount: baseXp, source: "fast_completed", reference_id: sessionId,
@@ -817,12 +822,14 @@ export async function updateFast(
         if (reward.error) throw reward.error;
         const badgeAwards = await checkBadges(userId, supabase);
         const finalProfile = await getProfileById(userId);
-        if (finalProfile) gamification = {
-          xpGained: (reward.data ?? []).reduce((sum, row) => sum + row.amount, 0) + badgeAwards.bonusXp,
-          newlyEarnedBadges: badgeAwards.badges, leveledUp: finalProfile.level > previousProfile.level,
-          previousLevel: previousProfile.level, newLevel: finalProfile.level, newXp: finalProfile.xp,
-        };
-        else rewardsPending = true;
+        if (finalProfile) {
+          progress = { currentStreak: finalProfile.currentStreak, totalFasts: finalProfile.totalFasts };
+          gamification = {
+            xpGained: (reward.data ?? []).reduce((sum, row) => sum + row.amount, 0) + badgeAwards.bonusXp,
+            newlyEarnedBadges: badgeAwards.badges, leveledUp: finalProfile.level > previousProfile.level,
+            previousLevel: previousProfile.level, newLevel: finalProfile.level, newXp: finalProfile.xp,
+          };
+        } else rewardsPending = true;
       } else {
         rewardsPending = true;
       }
@@ -844,7 +851,7 @@ export async function updateFast(
       } catch (error) { console.error("Fast completion feed delivery failed", error); }
     }
   }
-  return { session: mapFastSession(saved), gamification, rewardsPending };
+  return { session: mapFastSession(saved), gamification, rewardsPending, progress };
 }
 
 export type LocalFastHistoryImport = {
@@ -1720,10 +1727,12 @@ async function getComputedProfileFields(userId: string) {
       .from("fast_sessions")
       .select("stage_reached")
       .eq("user_id", userId)
-      .eq("status", "completed"),
+      .eq("status", "completed")
+      .order("stage_reached", { ascending: false, nullsFirst: false })
+      .limit(1),
     createAdminClient()
       .from("friendships")
-      .select("id")
+      .select("id", { count: "exact", head: true })
       .eq("status", "accepted")
       .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`),
   ]);
@@ -1742,7 +1751,7 @@ async function getComputedProfileFields(userId: string) {
 
   return {
     highestStageReached: FASTING_STAGES[Math.min(highestStageIndex, FASTING_STAGES.length - 1)]?.hour ?? 0,
-    friendCount: (friendshipResult.data ?? []).length,
+    friendCount: friendshipResult.count ?? 0,
   };
 }
 

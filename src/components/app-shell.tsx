@@ -1,14 +1,17 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { Session } from "next-auth";
 import { CalendarDays, Home, Trophy, UserRound, Users } from "lucide-react";
 
 import { AuthButton } from "@/components/auth/auth-button";
 import { BrandMark } from "@/components/brand-mark";
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { NavigationPending } from "@/components/layout/navigation-pending";
 import { InstallPrompt } from "@/components/system/install-prompt";
 import { OfflineNotice } from "@/components/system/offline-notice";
 import { Separator } from "@/components/ui/separator";
 import { getProfileById } from "@/lib/fasting-data";
+import type { ProfileSummary } from "@/lib/fasting";
 import { cn } from "@/lib/utils";
 
 type AppShellProps = {
@@ -20,6 +23,7 @@ type AppShellProps = {
     github: boolean;
   };
   session: Session | null;
+  profile?: ProfileSummary | null;
   title: string;
 };
 
@@ -47,16 +51,21 @@ function getPrimaryPath(currentPath: AppShellProps["currentPath"]) {
   return currentPath;
 }
 
-export async function AppShell({
+async function AccountButton({ providers, session }: Pick<AppShellProps, "providers" | "session">) {
+  const profile = session?.user?.id ? await getProfileById(session.user.id) : null;
+  return <AuthButton profile={profile} providers={providers} user={session?.user} />;
+}
+
+export function AppShell({
   children,
   currentPath,
   description,
   providers,
   session,
+  profile,
   title,
 }: AppShellProps) {
   const primaryPath = getPrimaryPath(currentPath);
-  const profile = session?.user?.id ? await getProfileById(session.user.id) : null;
   const routeTitle = navItems.find((item) => item.href === currentPath)?.label ?? title;
   const showGuestBanner = !session?.user && currentPath === "/";
 
@@ -83,7 +92,6 @@ export async function AppShell({
                     key={item.href}
                     href={item.href}
                     aria-current={item.href === primaryPath ? "page" : undefined}
-                    prefetch={false}
                     className={cn(
                       "group/nav relative inline-flex h-11 items-center justify-center gap-2 rounded-full px-3 text-sm font-medium transition-all duration-200",
                       item.href === primaryPath
@@ -93,6 +101,7 @@ export async function AppShell({
                   >
                     <Icon className="size-4" />
                     <span>{item.label}</span>
+                    <NavigationPending />
                     <span
                       className={cn(
                         "absolute -bottom-1.5 h-1.5 w-1.5 rounded-full bg-primary transition-all",
@@ -105,7 +114,13 @@ export async function AppShell({
               <Separator orientation="vertical" className="mx-1 h-6" />
             </nav>
             <div className="flex items-center gap-2">
-              <AuthButton profile={profile} providers={providers} user={session?.user} />
+              {profile !== undefined || !session?.user?.id ? (
+                <AuthButton profile={profile} providers={providers} user={session?.user} />
+              ) : (
+                <Suspense fallback={<AuthButton providers={providers} user={session.user} />}>
+                  <AccountButton providers={providers} session={session} />
+                </Suspense>
+              )}
             </div>
           </div>
           <div className={cn("mt-5 border-t border-white/[0.08] pt-4", currentPath === "/" && "sr-only lg:not-sr-only lg:mt-5 lg:border-t lg:pt-4")}>
@@ -116,16 +131,9 @@ export async function AppShell({
         <div className="mt-4 grid gap-4">
           <OfflineNotice />
           {showGuestBanner ? (
-            <div className="glass-soft rounded-[1.5rem] border border-primary/15 px-4 py-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Guest mode</p>
-                  <p className="mt-1 text-sm leading-5 text-foreground">
-                    Progress stays on this device until you sign in.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <p className="px-1 text-center text-xs leading-5 text-muted-foreground">
+              Guest mode · Progress stays on this device until you sign in
+            </p>
           ) : null}
         </div>
         <main

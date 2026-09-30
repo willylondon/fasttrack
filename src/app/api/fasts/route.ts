@@ -1,3 +1,4 @@
+import { serverTimingHeaders } from "@/lib/server-timing";
 import { FastConflictError } from "@/lib/fasting-errors";
 import { NextResponse } from "next/server";
 import { matchesExpectedAccount } from "@/lib/account-guard";
@@ -23,7 +24,9 @@ const startFastSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const authStarted = performance.now();
   const userId = await getCurrentUserId();
+  const authMs = performance.now() - authStarted;
 
   if (!userId) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
@@ -55,9 +58,10 @@ export async function POST(request: Request) {
   }
 
   try {
+    const dataStarted = performance.now();
     const session = await startFast(userId, parsed.data.plannedMinutes, parsed.data.startedAt, parsed.data.sourceId);
 
-    return NextResponse.json({ session });
+    return NextResponse.json({ session }, { headers: serverTimingHeaders(authMs, performance.now() - dataStarted) });
   } catch (error) {
     const message = getErrorMessage(error, "Unable to start fast.");
     return jsonMessage(message, error instanceof FastConflictError ? 409 : getErrorStatus(message));
