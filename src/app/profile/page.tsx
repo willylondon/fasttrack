@@ -18,6 +18,7 @@ export default async function ProfilePage() {
       description="See your streak, level, badges, and saved progress in one calm account view."
       providers={authProviders}
       session={session}
+      profile={profile.profile}
       title="Your progress, all in one place."
     >
       <ProfileView initialData={profile} providers={authProviders} signedIn={Boolean(session?.user?.id)} />

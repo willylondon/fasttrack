@@ -153,3 +153,27 @@ test("a missing rewards profile is explicitly pending while cancellation is not"
   const second = await startFast("u",960,started(),"two");
   assert.equal((await updateFast("u",second.id,"cancel")).rewardsPending,false);
 });
+
+
+test("completion overlaps independent pre-save reads and returns confirmed progress", async () => {
+  db({ rewards: true });
+  const fast = await startFast("u", 960, started(), "perf-op");
+  const fetchDatabase = globalThis.fetch;
+  const reads: URL[] = [];
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    reads.push(url);
+    await gate;
+    return fetchDatabase(input, init);
+  });
+  const pending = updateFast("u", fast.id, "complete");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  try {
+    assert.deepEqual(reads.map((url) => url.pathname.split("/").at(-1)).sort(), ["fast_sessions", "profiles"]);
+  } finally { release(); }
+  const result = await pending;
+  assert.deepEqual(result.progress, { currentStreak: 1, totalFasts: 1 });
+  assert.equal(result.session.status, "completed");
+});

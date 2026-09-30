@@ -190,3 +190,42 @@ test("malformed local session cannot crash dashboard rendering", async ({ page }
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Start fast", exact: true })).toBeVisible();
 });
+
+test("plan controls stay compact and return keyboard focus after a choice", async ({ page }) => {
+  await page.goto("/");
+  const plan = page.locator("details").filter({ has: page.locator("legend", { hasText: "Choose a fasting window" }) });
+  await expect(plan).not.toHaveAttribute("open");
+  await expect(page.getByRole("button", { name: "12h", exact: true })).toBeHidden();
+  await plan.locator("summary").click();
+  await page.getByRole("button", { name: "14h", exact: true }).click();
+  await expect(plan.locator("summary")).toContainText("14h plan");
+  await expect(plan).not.toHaveAttribute("open");
+  await expect(plan.locator("summary")).toBeFocused();
+  await expect(page.getByRole("timer")).toContainText("14h planned window");
+});
+
+test("week strip labels real completions without counting an active fast", async ({ page }) => {
+  await page.addInitScript((storageKey) => {
+    const now = new Date();
+    const endedAt = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0).toISOString();
+    const startedAt = new Date(Date.parse(endedAt) - 16 * 60 * 60 * 1000).toISOString();
+    const session = {
+      id: "completed-recent-fast", userId: "local", startedAt, endedAt,
+      durationMinutes: 960, plannedMinutes: 960, status: "completed",
+      notes: null, createdAt: startedAt, stageReached: 0,
+    };
+    window.localStorage.setItem(storageKey, JSON.stringify({
+      activeSession: { ...session, id: "current-fast", status: "active", startedAt: new Date().toISOString(), endedAt: null, durationMinutes: null },
+      sessions: [session], milestoneStageReached: 0,
+    }));
+  }, LOCAL_STORAGE_KEY);
+  await page.goto("/");
+  const week = page.getByRole("region", { name: "Recent completions in the last seven days" });
+  await expect(week.getByRole("listitem")).toHaveCount(7);
+  await expect(week.getByRole("listitem", { name: /today: 1 completed fast in recent history/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Edit start time/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "End fast", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancel fast", exact: true })).toBeHidden();
+  await page.locator("summary", { hasText: "Session details" }).click();
+  await expect(page.getByRole("button", { name: "Cancel fast", exact: true })).toBeVisible();
+});

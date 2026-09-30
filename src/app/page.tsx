@@ -22,6 +22,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
       description="Today's fasting window"
       providers={authProviders}
       session={session}
+      profile={dashboard.profile}
       title="Today"
     >
       {authError && !session?.user ? (

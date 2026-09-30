@@ -1,3 +1,4 @@
+import { serverTimingHeaders } from "@/lib/server-timing";
 import { FastConflictError } from "@/lib/fasting-errors";
 import { NextResponse } from "next/server";
 import { matchesExpectedAccount } from "@/lib/account-guard";
@@ -46,7 +47,9 @@ type RouteContext = {
 };
 
 export async function PATCH(request: Request, { params }: RouteContext) {
+  const authStarted = performance.now();
   const userId = await getCurrentUserId();
+  const authMs = performance.now() - authStarted;
   const { sessionId } = await params;
 
   if (!userId) {
@@ -99,6 +102,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       return NextResponse.json({ session });
     }
 
+    const dataStarted = performance.now();
     const result = await updateFast(
       userId,
       sessionId,
@@ -107,7 +111,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       payload.action === "complete" ? payload.endedAt : undefined
     );
 
-    return NextResponse.json(result);
+    return NextResponse.json(result, { headers: serverTimingHeaders(authMs, performance.now() - dataStarted) });
   } catch (error) {
     const message = getErrorMessage(error, "Unable to update fast.");
     return jsonMessage(message, error instanceof FastConflictError ? 409 : getErrorStatus(message));
