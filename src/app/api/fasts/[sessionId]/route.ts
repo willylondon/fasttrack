@@ -1,4 +1,6 @@
+import { FastConflictError } from "@/lib/fasting-errors";
 import { NextResponse } from "next/server";
+import { matchesExpectedAccount } from "@/lib/account-guard";
 import { z } from "zod";
 
 import { getErrorMessage, getErrorStatus, getZodMessage, jsonMessage, readJsonBody } from "@/lib/api-responses";
@@ -7,6 +9,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 
 const updateFastSchema = z.discriminatedUnion("action", [
   z.object({
+    expectedAccountId: z.string().uuid().optional(),
     action: z.literal("complete"),
     notes: z.string().max(600).optional().nullable(),
     endedAt: z
@@ -15,18 +18,22 @@ const updateFastSchema = z.discriminatedUnion("action", [
       .optional(),
   }),
   z.object({
+    expectedAccountId: z.string().uuid().optional(),
     action: z.literal("cancel"),
     notes: z.string().max(600).optional().nullable(),
   }),
   z.object({
+    expectedAccountId: z.string().uuid().optional(),
     action: z.literal("milestone"),
     stageIndex: z.number().int().min(1).max(13),
   }),
   z.object({
+    expectedAccountId: z.string().uuid().optional(),
     action: z.literal("edit_start"),
     startedAt: z.string().refine((value) => !Number.isNaN(Date.parse(value)), "Choose a valid start time."),
   }),
   z.object({
+    expectedAccountId: z.string().uuid().optional(),
     action: z.literal("edit_end"),
     endedAt: z.string().refine((value) => !Number.isNaN(Date.parse(value)), "Choose a valid end time."),
   }),
@@ -67,6 +74,10 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     return jsonMessage(getZodMessage(parsed.error), 400);
   }
 
+  if (!matchesExpectedAccount(userId, parsed.data.expectedAccountId)) {
+    return jsonMessage("Your signed-in account changed. Return to the original account before updating this fast.", 409);
+  }
+
   const payload = parsed.data;
 
   try {
@@ -99,6 +110,6 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     return NextResponse.json(result);
   } catch (error) {
     const message = getErrorMessage(error, "Unable to update fast.");
-    return jsonMessage(message, getErrorStatus(message));
+    return jsonMessage(message, error instanceof FastConflictError ? 409 : getErrorStatus(message));
   }
 }

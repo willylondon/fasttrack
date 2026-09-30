@@ -229,65 +229,23 @@ export async function checkBadges(userId: string, supabase: SupabaseClient) {
   });
 
   const existingBadgeIds = new Set((earnedResult.data ?? []).map((badge) => badge.badge_id));
-  const availableBadges = (badgeResult.data ?? []).map(mapBadge);
-  const newlyEarned = availableBadges.filter((badge) => {
-    if (existingBadgeIds.has(badge.id)) {
-      return false;
-    }
-
-    return meetsBadgeRequirement(badge, badgeStats);
-  });
-
-  if (!newlyEarned.length) {
-    return {
-      badges: [] as BadgeDefinition[],
-      bonusXp: 0,
-    };
+  const eligible = (badgeResult.data ?? []).map(mapBadge).filter((badge) =>
+    existingBadgeIds.has(badge.id) || meetsBadgeRequirement(badge, badgeStats)
+  );
+  const newlyEarned: BadgeDefinition[] = [];
+  let bonusXp = 0;
+  for (const badge of eligible) {
+    // The transaction also repairs legacy badges whose XP insertion was interrupted.
+    const result = await supabase.rpc("award_fasttrack_badge", {
+      target_user_id: userId, target_badge_id: badge.id,
+    });
+    if (result.error) throw result.error;
+    const awarded = result.data?.[0];
+    if (awarded?.new_badge) newlyEarned.push(badge);
+    bonusXp += awarded?.xp_awarded ?? 0;
   }
+  return { badges: newlyEarned, bonusXp };
 
-  const userBadgeRows = newlyEarned.map((badge) => ({
-    user_id: userId,
-    badge_id: badge.id,
-  }));
-  const xpRows = newlyEarned.map((badge) => ({
-    user_id: userId,
-    amount: badge.xpReward,
-    source: "badge_earned",
-    reference_id: badge.id,
-  }));
-  const feedRows = newlyEarned.map((badge) => ({
-    user_id: userId,
-    event_type: "badge_earned",
-    metadata: {
-      badgeId: badge.id,
-      badgeName: badge.name,
-      badgeIcon: badge.icon,
-      xpReward: badge.xpReward,
-    },
-  }));
-
-  const [userBadgeInsert, xpInsert, feedInsert] = await Promise.all([
-    supabase.from("user_badges").insert(userBadgeRows),
-    supabase.from("xp_transactions").insert(xpRows),
-    supabase.from("feed_events").insert(feedRows),
-  ]);
-
-  if (userBadgeInsert.error) {
-    throw userBadgeInsert.error;
-  }
-
-  if (xpInsert.error) {
-    throw xpInsert.error;
-  }
-
-  if (feedInsert.error) {
-    throw feedInsert.error;
-  }
-
-  return {
-    badges: newlyEarned,
-    bonusXp: newlyEarned.reduce((sum, badge) => sum + badge.xpReward, 0),
-  };
 }
 
 async function getBadgeStats(userId: string, supabase: SupabaseClient, currentStats: BadgeStats) {

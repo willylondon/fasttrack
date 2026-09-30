@@ -31,7 +31,7 @@ export function FastingMilestoneBar({
     return (
       <div className="glass-soft rounded-[1.7rem] p-4 sm:p-5">
         <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-          Estimated milestone progress
+          Time checkpoints
         </p>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
           Milestones will appear after you start a fast.
@@ -50,7 +50,7 @@ export function FastingMilestoneBar({
   const endTime = new Date(Date.parse(startedAt) + plannedMinutes * 60000).toISOString();
   const cautionCopy =
     elapsedMinutes >= 18 * 60
-      ? "This is FastTrack's cautious planning max. Stay within your plan and stop if you feel unwell."
+      ? "Longer is not automatically better. Stay within your plan and stop if you feel unwell."
       : elapsedMinutes > plannedMinutes
         ? "Your planned window has passed. Stay within your plan and end when it feels appropriate."
         : null;
@@ -59,7 +59,7 @@ export function FastingMilestoneBar({
     <div className="rounded-[1.25rem] p-3 sm:p-4">
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-          Estimated milestone progress
+          Time checkpoints
         </p>
       </div>
 
@@ -111,7 +111,7 @@ export function FastingMilestoneBar({
           </span>
         </p>
         <p className="text-muted-foreground">
-          Estimated stage:{" "}
+          Time checkpoint:{" "}
           <span className="font-medium text-foreground">
             {currentMilestone.label} · begins at {formatStageHour(currentMilestone.hour)}
           </span>

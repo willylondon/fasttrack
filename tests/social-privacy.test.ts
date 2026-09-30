@@ -58,6 +58,9 @@ function database(tables: Record<string, Row[]>) {
       } else if (condition.startsWith("in.(")) {
         const ids = condition.slice(4, -1).split(",");
         rows = rows.filter((row) => ids.includes(String(row[column])));
+      } else if (condition.startsWith("not.in.(")) {
+        const excluded = condition.slice(8, -1).split(",");
+        rows = rows.filter((row) => !excluded.includes(String(row[column])));
       } else if (condition === "not.is.null") {
         rows = rows.filter((row) => row[column] != null);
       } else if (condition.startsWith("gt.")) {
@@ -66,6 +69,10 @@ function database(tables: Record<string, Row[]>) {
         assert.fail(`Unhandled query condition: ${column}=${condition}`);
       }
     }
+    if (url.searchParams.get("order") === "created_at.desc") {
+      rows = [...rows].sort((a, b) => Date.parse(String(b.created_at)) - Date.parse(String(a.created_at)));
+    }
+    if (url.searchParams.has("limit")) rows = rows.slice(0, Number(url.searchParams.get("limit")));
     const columns = url.searchParams.get("select")!.split(",");
     return new Response(JSON.stringify(rows.map((row) =>
       Object.fromEntries(columns.filter((key) => key in row).map((key) => [key, row[key]]))
@@ -145,4 +152,35 @@ test("signed-out social data is empty and makes no database requests", async () 
   assert.deepEqual((await getFriendsPageData(null)).outgoingRequests, []);
   assert.deepEqual((await getFeedPageData(null)).liveSessions, []);
   assert.equal(queries.length, 0);
+});
+
+for (const consent of [false, null, undefined, true]) {
+  test(`live feed events respect current consent (${consent}); completed activity is retained`, async () => {
+    const friend = profile("friend", consent ?? null);
+    if (consent === undefined) delete friend.share_live_status;
+    database({
+      friendships: [friendship("self", "friend")],
+      profiles: [profile("self"), friend],
+      fast_sessions: [],
+      feed_events: ["fast_started", "milestone_hit", "fast_completed"].map((event_type) => ({
+        id: event_type, user_id: "friend", event_type, created_at: completedAt,
+        metadata: { sessionId: "private-session", stageIndex: 3, plannedMinutes: 960 },
+      })),
+    });
+    const result = await getFeedPageData("self");
+    assert.deepEqual(result.feed.map((event) => event.eventType).sort(),
+      consent === true ? ["fast_completed", "fast_started", "milestone_hit"] : ["fast_completed"]);
+  });
+}
+
+
+test("hidden recent feed events do not displace older visible activity", async () => {
+  database({ friendships: [friendship("self", "friend")],
+    profiles: [profile("self"), profile("friend", false)], fast_sessions: [],
+    feed_events: [
+      ...Array.from({ length: 70 }, (_, i) => ({ id: `hidden-${i}`, user_id: "friend", event_type: "milestone_hit", created_at: completedAt, metadata: {} })),
+      { id: "older-visible", user_id: "friend", event_type: "fast_completed", created_at: "2026-01-01T00:00:00Z", metadata: {} },
+    ],
+  });
+  assert.deepEqual((await getFeedPageData("self")).feed.map((event) => event.id), ["older-visible"]);
 });

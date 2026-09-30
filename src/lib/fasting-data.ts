@@ -3,6 +3,7 @@
 import "server-only";
 
 import { auth } from "@/auth";
+import { FastConflictError } from "@/lib/fasting-errors";
 import {
   EMPTY_DASHBOARD_DATA,
   EMPTY_HISTORY_DATA,
@@ -575,59 +576,46 @@ export async function updateProfileSettings(
   return mapProfile(result.data);
 }
 
-export async function startFast(userId: string, plannedMinutes: number, startedAt?: string | null) {
-  if (plannedMinutes < MIN_PUBLIC_FAST_MINUTES || plannedMinutes > MAX_PUBLIC_FAST_MINUTES) {
+export async function startFast(userId: string, plannedMinutes: number, startedAt?: string | null, sourceId?: string) {
+  if (!Number.isInteger(plannedMinutes) || plannedMinutes < MIN_PUBLIC_FAST_MINUTES || plannedMinutes > MAX_PUBLIC_FAST_MINUTES) {
     throw new Error("FastTrack supports planned windows from 12 to 24 hours.");
   }
-
+  if (sourceId !== undefined && (!sourceId.trim() || sourceId.length > 128)) {
+    throw new Error("Choose a valid fast source identifier.");
+  }
   const supabase = createAdminClient();
-  const existingActive = await supabase
-    .from("fast_sessions")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("status", "active")
-    .limit(1)
-    .maybeSingle();
-
-  if (existingActive.error) {
-    throw existingActive.error;
-  }
-
-  if (existingActive.data) {
-    throw new Error("You already have an active fast.");
-  }
-
+  const findSource = async () => {
+    if (!sourceId) return null;
+    const result = await supabase.from("fast_sessions").select(FAST_SESSION_COLUMNS)
+      .eq("user_id", userId).eq("import_key", sourceId).maybeSingle();
+    if (result.error) throw result.error;
+    return result.data;
+  };
+  // Resolve retries before timestamp validation: a previously saved operation remains valid.
+  const saved = await findSource();
+  if (saved) return mapFastSession(saved);
   const startedAtValue = startedAt ?? new Date().toISOString();
-  const startTimeValidation = validateManualStartTimestamp(startedAtValue);
-
-  if (!startTimeValidation.valid) {
-    throw new Error(startTimeValidation.message);
-  }
-
-  const initialStageReached = getStageIndexForMinutes(startTimeValidation.backdatedMinutes);
-
-  const insertResult = await supabase
-    .from("fast_sessions")
-    .insert({
-      user_id: userId,
-      started_at: startedAtValue,
-      duration_planned_minutes: plannedMinutes,
-      status: "active",
-      notes: null,
-      stage_reached: initialStageReached,
-    })
-    .select(FAST_SESSION_COLUMNS)
-    .single();
-
+  const validation = validateManualStartTimestamp(startedAtValue);
+  if (!validation.valid) throw new Error(validation.message);
+  const insertResult = await supabase.from("fast_sessions").insert({
+    user_id: userId, started_at: startedAtValue, duration_planned_minutes: plannedMinutes,
+    status: "active", notes: null, stage_reached: getStageIndexForMinutes(validation.backdatedMinutes),
+    import_key: sourceId ?? null,
+  }).select(FAST_SESSION_COLUMNS).single();
   if (insertResult.error) {
+    if (insertResult.error.code === "23505") {
+      const concurrent = await findSource();
+      if (concurrent) return mapFastSession(concurrent);
+      throw new FastConflictError("You already have an active fast.");
+    }
     throw insertResult.error;
   }
-
-  await insertFeedEvent(userId, "fast_started", {
-    plannedMinutes,
-    sessionId: insertResult.data.id,
-  });
-
+  // Feed delivery must never turn an already saved fast into a reported failure.
+  try {
+    await insertFeedEvent(userId, "fast_started", { plannedMinutes, sessionId: insertResult.data.id });
+  } catch (error) {
+    console.error("Fast start feed delivery failed", error);
+  }
   return mapFastSession(insertResult.data);
 }
 
@@ -667,13 +655,16 @@ export async function updateFastStartTime(userId: string, sessionId: string, sta
     })
     .eq("id", sessionId)
     .eq("user_id", userId)
+    .eq("status", "active")
+    .eq("started_at", sessionResult.data.started_at)
     .select(FAST_SESSION_COLUMNS)
-    .single();
+    .maybeSingle();
 
   if (updateResult.error) {
     throw updateResult.error;
   }
 
+  if (!updateResult.data) throw new FastConflictError("This fast changed. Refresh before adjusting it.");
   return mapFastSession(updateResult.data);
 }
 
@@ -730,13 +721,18 @@ export async function updateFastEndTime(userId: string, sessionId: string, ended
     })
     .eq("id", sessionId)
     .eq("user_id", userId)
+    .eq("status", "completed")
+    .eq("ended_at", sessionResult.data.ended_at)
     .select(FAST_SESSION_COLUMNS)
-    .single();
+    .maybeSingle();
 
   if (updateResult.error) {
     throw updateResult.error;
   }
 
+  if (!updateResult.data) throw new FastConflictError("This fast changed. Refresh before adjusting it.");
+
+  try {
   const feedUpdateResult = await supabase
     .from("feed_events")
     .update({
@@ -754,149 +750,101 @@ export async function updateFastEndTime(userId: string, sessionId: string, ended
     console.error("Fast completion feed metadata update failed", feedUpdateResult.error);
   }
 
+  } catch (error) {
+    console.error("Fast completion feed metadata update failed", error);
+  }
   return mapFastSession(updateResult.data);
 }
 
 export async function updateFast(
-  userId: string,
-  sessionId: string,
-  action: "complete" | "cancel",
-  notes?: string | null,
-  completedAt?: string | null
+  userId: string, sessionId: string, action: "complete" | "cancel",
+  notes?: string | null, completedAt?: string | null
 ) {
   const supabase = createAdminClient();
-  const sessionResult = await supabase
-    .from("fast_sessions")
-    .select(FAST_SESSION_COLUMNS)
-    .eq("id", sessionId)
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (sessionResult.error) {
-    throw sessionResult.error;
+  const readSession = async () => {
+    const result = await supabase.from("fast_sessions").select(FAST_SESSION_COLUMNS)
+      .eq("id", sessionId).eq("user_id", userId).maybeSingle();
+    if (result.error) throw result.error;
+    if (!result.data) throw new Error("Fast session not found.");
+    return result.data;
+  };
+  let saved = await readSession();
+  const nextStatus: FastStatus = action === "complete" ? "completed" : "cancelled";
+  let transitioned = false;
+  let previousStreak: number | undefined;
+  if (action === "complete" && saved.status === "active") {
+    try { previousStreak = (await getProfileById(userId))?.currentStreak; }
+    catch (error) { console.error("Pre-completion profile read failed", error); }
   }
-
-  if (!sessionResult.data) {
-    throw new Error("Fast session not found.");
+  if (saved.status !== "active" && saved.status !== nextStatus) {
+    throw new FastConflictError("This fast already ended with a different action.");
   }
-
-  if (sessionResult.data.status !== "active") {
-    throw new Error("Only active fasts can be updated.");
-  }
-
-  const endedAt = action === "complete" && completedAt ? completedAt : new Date().toISOString();
-  const endTimeValidation = validateFastEndTimestamp(sessionResult.data.started_at, endedAt);
-  const durationMinutes = endTimeValidation.durationMinutes;
-
-  if (!endTimeValidation.valid) {
-    if (action === "complete") {
-      throw new Error(endTimeValidation.message);
-    }
-
-    if (Date.parse(endedAt) < Date.parse(sessionResult.data.started_at)) {
+  if (saved.status === "active") {
+    const endedAt = action === "complete" && completedAt ? completedAt : new Date().toISOString();
+    const validation = validateFastEndTimestamp(saved.started_at, endedAt);
+    if (!validation.valid && action === "complete") throw new Error(validation.message);
+    if (!Number.isFinite(Date.parse(endedAt)) || Date.parse(endedAt) < Date.parse(saved.started_at)) {
       throw new Error("Cancel time cannot be before the start time.");
     }
-  }
-
-  const finalStageReached = getStageIndexForMinutes(Math.max(0, durationMinutes));
-  const nextStatus: FastStatus = action === "complete" ? "completed" : "cancelled";
-
-  // Capture previous profile state before fast_sessions_sync_profile_fast_stats trigger executes
-  const previousProfile = action === "complete" ? await getProfileById(userId) : null;
-
-  const updateResult = await supabase
-    .from("fast_sessions")
-    .update({
-      ended_at: new Date(endedAt).toISOString(),
-      duration_minutes: Math.max(0, durationMinutes),
-      notes: normalizeOptionalText(notes),
-      status: nextStatus,
-      stage_reached: finalStageReached,
-    })
-    .eq("id", sessionId)
-    .eq("user_id", userId)
-    .select(FAST_SESSION_COLUMNS)
-    .single();
-
-  if (updateResult.error) {
-    throw updateResult.error;
-  }
-
-  let gamification: FastCompletionGamification | undefined;
-
-  if (action === "complete") {
-    try {
-      // Re-fetch the profile. The database trigger fast_sessions_sync_profile_fast_stats has completed running,
-      // so refreshedProfile will contain the updated total_fasts, streaks, etc.
-      const refreshedProfile = await getProfileById(userId);
-
-      await insertFeedEvent(userId, "fast_completed", {
-        durationMinutes,
-        plannedMinutes: sessionResult.data.duration_planned_minutes,
-        sessionId,
-      });
-
-      if (
-        refreshedProfile &&
-        previousProfile &&
-        refreshedProfile.currentStreak > previousProfile.currentStreak
-      ) {
-        await insertFeedEvent(userId, "streak_updated", {
-          currentStreak: refreshedProfile.currentStreak,
-        });
-      }
-
-      if (refreshedProfile && previousProfile) {
-        const baseXp = xpForFasting(durationMinutes, finalStageReached, refreshedProfile.currentStreak);
-        const xpTransactionResult = await supabase.from("xp_transactions").insert({
-          user_id: userId,
-          amount: baseXp,
-          source: "fast_completed",
-          reference_id: sessionId,
-        });
-
-        if (xpTransactionResult.error) {
-          throw xpTransactionResult.error;
-        }
-
-        // checkBadges automatically writes badge earned XP transactions
-        const badgeAwards = await checkBadges(userId, supabase);
-
-        // Fetch final profile after all XP transactions are processed by database triggers
-        const finalProfile = await getProfileById(userId);
-
-        if (!finalProfile) {
-          throw new Error("Failed to fetch final profile");
-        }
-
-        const totalXpGain = baseXp + badgeAwards.bonusXp;
-        const levelChanged = finalProfile.level > previousProfile.level;
-
-        if (levelChanged) {
-          await insertFeedEvent(userId, "level_up", {
-            level: finalProfile.level,
-            previousLevel: previousProfile.level,
-          });
-        }
-
-        gamification = {
-          xpGained: totalXpGain,
-          newlyEarnedBadges: badgeAwards.badges,
-          leveledUp: levelChanged,
-          previousLevel: previousProfile.level,
-          newLevel: finalProfile.level,
-          newXp: finalProfile.xp,
-        };
-      }
-    } catch (error) {
-      console.error("Fast completion side effects failed", error);
+    const minutes = Math.max(0, validation.durationMinutes);
+    const result = await supabase.from("fast_sessions").update({
+      ended_at: new Date(endedAt).toISOString(), duration_minutes: minutes,
+      notes: normalizeOptionalText(notes), status: nextStatus, stage_reached: getStageIndexForMinutes(minutes),
+    }).eq("id", sessionId).eq("user_id", userId).eq("status", "active")
+      .eq("started_at", saved.started_at).select(FAST_SESSION_COLUMNS).maybeSingle();
+    if (result.error) throw result.error;
+    if (result.data) {
+      saved = result.data;
+      transitioned = true;
+    } else {
+      saved = await readSession();
+      if (saved.status !== nextStatus) throw new FastConflictError("This fast changed. Refresh before updating it.");
     }
   }
-
-  return {
-    session: mapFastSession(updateResult.data),
-    gamification,
-  };
+  let gamification: FastCompletionGamification | undefined;
+  let rewardsPending = false;
+  let completedStreak: number | undefined;
+  if (action === "complete") {
+    // A repeated completion repairs interrupted rewards. Unique reward keys prevent double XP.
+    try {
+      const previousProfile = await getProfileById(userId);
+      if (previousProfile) {
+        completedStreak = previousProfile.currentStreak;
+        const baseXp = xpForFasting(saved.duration_minutes ?? 0, saved.stage_reached, previousProfile.currentStreak);
+        const reward = await supabase.from("xp_transactions").upsert({
+          user_id: userId, amount: baseXp, source: "fast_completed", reference_id: sessionId,
+        }, { onConflict: "user_id,source,reference_id", ignoreDuplicates: true }).select("amount");
+        if (reward.error) throw reward.error;
+        const badgeAwards = await checkBadges(userId, supabase);
+        const finalProfile = await getProfileById(userId);
+        if (finalProfile) gamification = {
+          xpGained: (reward.data ?? []).reduce((sum, row) => sum + row.amount, 0) + badgeAwards.bonusXp,
+          newlyEarnedBadges: badgeAwards.badges, leveledUp: finalProfile.level > previousProfile.level,
+          previousLevel: previousProfile.level, newLevel: finalProfile.level, newXp: finalProfile.xp,
+        };
+        else rewardsPending = true;
+      } else {
+        rewardsPending = true;
+      }
+    } catch (error) {
+      rewardsPending = true;
+      console.error("Fast completion rewards failed; completion retry can repair them", error);
+    }
+    if (transitioned) {
+      try {
+        await insertFeedEvent(userId, "fast_completed", {
+          durationMinutes: saved.duration_minutes, plannedMinutes: saved.duration_planned_minutes, sessionId,
+        });
+        if (previousStreak !== undefined && completedStreak !== undefined && completedStreak > previousStreak) {
+          await insertFeedEvent(userId, "streak_updated", { currentStreak: completedStreak });
+        }
+        if (gamification?.leveledUp) {
+          await insertFeedEvent(userId, "level_up", { level: gamification.newLevel, previousLevel: gamification.previousLevel });
+        }
+      } catch (error) { console.error("Fast completion feed delivery failed", error); }
+    }
+  }
+  return { session: mapFastSession(saved), gamification, rewardsPending };
 }
 
 export type LocalFastHistoryImport = {
@@ -908,124 +856,45 @@ export type LocalFastHistoryImport = {
 };
 
 export async function importLocalFastHistory(userId: string, sessions: LocalFastHistoryImport[]) {
-  if (!sessions.length) {
-    return { importedCount: 0, syncedSourceIds: [] as string[] };
-  }
-
+  if (!sessions.length) return { importedCount: 0, syncedSourceIds: [] as string[] };
   const supabase = createAdminClient();
-  const sourceIds = sessions.map((session) => session.sourceId);
-  const existingResult = await supabase
-    .from("fast_sessions")
-    .select("import_key")
-    .eq("user_id", userId)
-    .in("import_key", sourceIds);
-
-  if (existingResult.error) {
-    throw existingResult.error;
-  }
-
-  const existingSourceIds = new Set(
-    (existingResult.data ?? [])
-      .map((session) => session.import_key)
-      .filter((sourceId): sourceId is string => typeof sourceId === "string")
-  );
-  const missingSessions = sessions.filter((session) => !existingSourceIds.has(session.sourceId));
-
-  if (missingSessions.length) {
-    const insertResult = await supabase.from("fast_sessions").insert(
-      missingSessions.map((session) => {
-        const durationMinutes = Math.round(
-          (Date.parse(session.endedAt) - Date.parse(session.startedAt)) / 60000
-        );
-
-        return {
-          user_id: userId,
-          started_at: session.startedAt,
-          ended_at: session.endedAt,
-          duration_minutes: durationMinutes,
-          duration_planned_minutes: session.plannedMinutes,
-          status: "completed",
-          notes: normalizeOptionalText(session.notes),
-          stage_reached: getStageIndexForMinutes(durationMinutes),
-          import_key: session.sourceId,
-        };
-      })
-    );
-
-    if (insertResult.error) {
-      throw insertResult.error;
-    }
-  }
-
+  const unique = [...new Map(sessions.map((session) => [session.sourceId, session])).values()];
+  const rows = unique.map((session) => {
+    const validation = validateFastEndTimestamp(session.startedAt, session.endedAt);
+    if (!validation.valid) throw new Error(validation.message);
+    return {
+      user_id: userId, started_at: session.startedAt, ended_at: session.endedAt,
+      duration_minutes: validation.durationMinutes, duration_planned_minutes: session.plannedMinutes,
+      status: "completed", notes: normalizeOptionalText(session.notes),
+      stage_reached: getStageIndexForMinutes(validation.durationMinutes), import_key: session.sourceId,
+    };
+  });
+  const inserted = await supabase.from("fast_sessions").upsert(rows, {
+    onConflict: "user_id,import_key", ignoreDuplicates: true,
+  }).select("import_key");
+  if (inserted.error) throw inserted.error;
+  const persisted = await supabase.from("fast_sessions").select("import_key,status")
+    .eq("user_id", userId).in("import_key", unique.map((session) => session.sourceId));
+  if (persisted.error) throw persisted.error;
   return {
-    importedCount: missingSessions.length,
-    syncedSourceIds: sourceIds,
+    importedCount: inserted.data?.length ?? 0,
+    // Never clear a local completed record merely because its key belongs to an active/cancelled row.
+    syncedSourceIds: (persisted.data ?? []).filter((row) => row.status === "completed").map((row) => row.import_key as string),
   };
 }
 
 export async function recordMilestone(userId: string, sessionId: string, stageIndex: number) {
-  const supabase = createAdminClient();
-  const sessionResult = await supabase
-    .from("fast_sessions")
-    .select(FAST_SESSION_COLUMNS)
-    .eq("id", sessionId)
-    .eq("user_id", userId)
-    .eq("status", "active")
-    .maybeSingle();
-
-  if (sessionResult.error) {
-    throw sessionResult.error;
-  }
-
-  if (!sessionResult.data) {
-    throw new Error("Active fast not found.");
-  }
-
   const stage = FASTING_STAGES[stageIndex];
-
-  if (!stage) {
-    throw new Error("Invalid milestone stage.");
-  }
-
-  const existingMilestones = await supabase
-    .from("feed_events")
-    .select(FEED_COLUMNS)
-    .eq("user_id", userId)
-    .eq("event_type", "milestone_hit")
-    .order("created_at", { ascending: false })
-    .limit(25);
-
-  if (existingMilestones.error) {
-    throw existingMilestones.error;
-  }
-
-  const alreadyTracked = (existingMilestones.data ?? []).some((event) => {
-    const metadata = event.metadata ?? {};
-
-    return metadata.sessionId === sessionId && Number(metadata.stageIndex) === stageIndex;
+  if (!Number.isInteger(stageIndex) || !stage || stageIndex < 1) throw new Error("Invalid milestone stage.");
+  // The RPC locks the session through both the active-state check and feed insert.
+  const result = await createAdminClient().rpc("record_fast_milestone", {
+    target_user_id: userId, target_session_id: sessionId, target_stage: stageIndex,
+    threshold_hours: stage.hour, stage_label: stage.label,
   });
-
-  if (!alreadyTracked) {
-    const updateSessionResult = await supabase
-      .from("fast_sessions")
-      .update({
-        stage_reached: stageIndex,
-      })
-      .eq("id", sessionId)
-      .eq("user_id", userId);
-
-    if (updateSessionResult.error) {
-      throw updateSessionResult.error;
-    }
-
-    await insertFeedEvent(userId, "milestone_hit", {
-      sessionId,
-      stageIndex,
-      stageLabel: stage.label,
-      thresholdHours: stage.hour,
-    });
+  if (result.error) {
+    if (result.error.code === "P0002") throw new FastConflictError("Active fast not found or already ended.");
+    throw result.error;
   }
-
   return stage;
 }
 
@@ -1068,7 +937,22 @@ export async function createFriendRequest(userId: string, targetUserId: string) 
       throw new Error("You are already connected.");
     }
 
-    throw new Error("A friend request already exists between these accounts.");
+    if (existingResult.data.status === "rejected" && existingResult.data.receiver_id === userId) {
+      // Only the person who declined can reopen contact. The original sender
+      // cannot repeatedly send unwanted requests or infer a decline in search.
+      const reopened = await supabase.from("friendships")
+        .update({ sender_id: userId, receiver_id: targetUserId, status: "pending" })
+        .eq("id", existingResult.data.id).eq("status", "rejected")
+        .eq("receiver_id", userId).select("id").maybeSingle();
+      if (reopened.error) throw reopened.error;
+      if (!reopened.data) throw new Error("This request changed. Refresh your circle and try again.");
+      return reopened.data.id;
+    }
+
+    if (existingResult.data.status === "pending" && existingResult.data.sender_id === userId) {
+      return existingResult.data.id;
+    }
+    throw new Error("A request cannot be sent to this member right now.");
   }
 
   const insertResult = await supabase
@@ -1082,6 +966,14 @@ export async function createFriendRequest(userId: string, targetUserId: string) 
     .single();
 
   if (insertResult.error) {
+    if (insertResult.error.code === "23505") {
+      const saved = await supabase.from("friendships").select("id")
+        .eq("sender_id", userId).eq("receiver_id", targetUserId)
+        .eq("status", "pending").maybeSingle();
+      if (saved.error) throw saved.error;
+      if (saved.data) return saved.data.id;
+      throw new Error("A request cannot be sent to this member right now.");
+    }
     throw insertResult.error;
   }
 
@@ -1133,6 +1025,14 @@ export async function cancelOutgoingFriendRequest(userId: string, friendshipId: 
   return deleteResult.data.id;
 }
 
+export async function removeFriendConnection(userId: string, targetUserId: string) {
+  const result = await createAdminClient().from("friendships").delete()
+    .eq("status", "accepted")
+    .or(`and(sender_id.eq.${userId},receiver_id.eq.${targetUserId}),and(sender_id.eq.${targetUserId},receiver_id.eq.${userId})`);
+  if (result.error) throw result.error;
+  return targetUserId;
+}
+
 export async function searchProfiles(userId: string, query: string) {
   const normalizedQuery = query.trim();
 
@@ -1143,7 +1043,7 @@ export async function searchProfiles(userId: string, query: string) {
   const supabase = createAdminClient();
   const existingFriendships = await supabase
     .from("friendships")
-    .select("sender_id,receiver_id")
+    .select("sender_id,receiver_id,status")
     .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
 
   if (existingFriendships.error) {
@@ -1153,6 +1053,7 @@ export async function searchProfiles(userId: string, query: string) {
   const blockedIds = new Set<string>([userId]);
 
   for (const friendship of existingFriendships.data ?? []) {
+    if (friendship.status === "rejected" && friendship.receiver_id === userId) continue;
     blockedIds.add(friendship.sender_id);
     blockedIds.add(friendship.receiver_id);
   }
@@ -1509,26 +1410,28 @@ async function getHighestMilestoneStage(userId: string, session: FastSession | n
 }
 
 async function getFriendFeed(friendIds: string[], limit = 20) {
-  if (!friendIds.length) {
-    return [];
-  }
-
+  if (!friendIds.length) return [];
   const supabase = createAdminClient();
-  const [feedResult, profileLookup] = await Promise.all([
-    supabase
-      .from("feed_events")
-      .select(FEED_COLUMNS)
-      .in("user_id", friendIds)
-      .order("created_at", { ascending: false })
-      .limit(limit),
-    getProfilesById(friendIds),
+  const profileLookup = await getProfilesById(friendIds);
+  const sharingIds = friendIds.filter((id) => profileLookup.get(id)?.shareLiveStatus === true);
+  // Filter before pagination: private events must neither leak nor displace
+  // older visible completed activity from the finite feed window.
+  const [completedResult, liveResult] = await Promise.all([
+    supabase.from("feed_events").select(FEED_COLUMNS).in("user_id", friendIds)
+      .not("event_type", "in", "(fast_started,milestone_hit)")
+      .order("created_at", { ascending: false }).limit(limit),
+    sharingIds.length
+      ? supabase.from("feed_events").select(FEED_COLUMNS).in("user_id", sharingIds)
+          .in("event_type", ["fast_started", "milestone_hit"])
+          .order("created_at", { ascending: false }).limit(limit)
+      : Promise.resolve({ data: [], error: null }),
   ]);
-
-  if (feedResult.error) {
-    throw feedResult.error;
-  }
-
-  return (feedResult.data ?? []).map((event) => mapFeedEvent(event, profileLookup.get(event.user_id) ?? null));
+  if (completedResult.error) throw completedResult.error;
+  if (liveResult.error) throw liveResult.error;
+  return [...(completedResult.data ?? []), ...(liveResult.data ?? [])]
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+    .slice(0, limit)
+    .map((event) => mapFeedEvent(event, profileLookup.get(event.user_id) ?? null));
 }
 
 async function getActiveFriendSessions(

@@ -90,7 +90,7 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
   if (!signedIn || !profile) {
     return (
       <EmptyState
-        eyebrow="Profile preview"
+        eyebrow="Your account"
         title="Sign in to sync your progress."
         description="Keep your streak, badges, settings, and recent activity tied to one FastTrack profile across devices."
         actions={
@@ -109,17 +109,17 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
         preview={
           <div>
             <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Example progress
+              What your profile brings together
             </p>
-            <div className="premium-rail grid gap-3 rounded-[1.5rem] p-3 sm:grid-cols-3">
+            <div className="grid gap-5 border-t border-white/[0.1] pt-5 sm:grid-cols-3">
               {[
-                { label: "Current streak", value: "5 days", tone: "text-success" },
-                { label: "Badge cabinet", value: "12 badges", tone: "text-gold" },
-                { label: "Level progress", value: "Level 4", tone: "text-primary-readable" },
+                { label: "Consistency", value: "Your streak", tone: "text-foreground" },
+                { label: "Achievements", value: "Earned badges", tone: "text-foreground" },
+                { label: "Progress", value: "Your level", tone: "text-foreground" },
               ].map((item) => (
-                <div key={item.label} className="rounded-[1.1rem] px-3 py-3">
+                <div key={item.label} className="py-1">
                   <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{item.label}</p>
-                  <p className={cn("mt-2 font-[family:var(--font-heading)] text-2xl font-semibold", item.tone)}>
+                  <p className={cn("mt-2 font-[family:var(--font-heading)] text-lg font-semibold", item.tone)}>
                     {item.value}
                   </p>
                 </div>
@@ -514,7 +514,7 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
                 ? "Live in-progress sharing is not configured for this environment yet."
                 : liveStatusSharingEnabled
                 ? "Accepted friends can see when you are currently fasting, how long you have been in the window, and your planned end time."
-                : "Accepted friends will not see your in-progress fasting window. Completed sessions and other feed updates still work as usual."}
+                : "Start/checkpoint feed updates and your active timer stay hidden. Completed progress is shared with accepted friends."}
             </p>
           </div>
           <div className="glass-soft rounded-[1.5rem] p-4">

@@ -45,7 +45,7 @@ const TYPE_HELP: Record<ChallengeType, string> = {
   streak_days: "Maintain a consecutive-day fasting streak",
   total_hours: "Accumulate total fasting hours",
   daily_fast: "Complete a fast on X different days",
-  milestone_reach: "Reach autophagy or beyond X times",
+  milestone_reach: "Complete X fasts that reach the 6-hour checkpoint",
 };
 
 const TYPE_UNITS: Record<ChallengeType, string> = {
@@ -81,11 +81,11 @@ const CHALLENGE_TEMPLATES = [
     description: "Stack up 20 fasting hours this week.",
   },
   {
-    title: "Autophagy Hunt",
+    title: "Consistent Check-ins",
     challengeType: "milestone_reach" as const,
     targetValue: "3",
     durationDays: "14",
-    description: "Reach the autophagy milestone three times.",
+    description: "Complete three fasts that reach the 6-hour checkpoint. Checkpoints track time, not changes inside your body.",
   },
 ] satisfies Array<{
   title: string;
@@ -429,51 +429,30 @@ export function ChallengesView({ initialData, providers, signedIn }: ChallengesV
 
   if (!signedIn) {
     return (
-      <Card className="section-enter" style={{ animationDelay: "0ms" }}>
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <div className="rounded-2xl bg-primary/10 p-2 text-primary-readable shadow-[0_8px_20px_rgba(139,92,246,0.16)]">
-              <Trophy className="size-4" />
-            </div>
-            <div>
-              <CardTitle>Challenges</CardTitle>
-              <CardDescription>
-                Join time-bound fasting challenges and compete with your circle.
-              </CardDescription>
+      <EmptyState
+        eyebrow="Challenges"
+        title="Build consistency together."
+        description="Set a shared goal, follow progress, and encourage your circle. Sign in to create or join a challenge."
+        actions={<SignInDialog buttonClassName="w-full sm:w-auto" buttonLabel="Sign in to join challenges" providers={providers} size="lg" />}
+        preview={
+          <div className="border-t border-white/[0.1] pt-5">
+            <p className="text-sm font-medium">Example challenge ideas</p>
+            <p className="mt-1 text-sm text-muted-foreground">Illustrations only. These are not active challenges.</p>
+            <div className="mt-5 grid gap-5 sm:grid-cols-3">
+              {[
+                ["Consistency sprint", "Set a goal for fasting on a chosen number of days."],
+                ["Shared weekly goal", "Work toward a total-hours goal at your own pace."],
+                ["Your own challenge", "Choose a target and timeframe for your circle."],
+              ].map(([title, detail]) => (
+                <div key={title}>
+                  <p className="text-sm font-semibold text-primary-readable">{title}</p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p>
+                </div>
+              ))}
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
-          <EmptyState
-            eyebrow="Signed out"
-            title="Compete and stay motivated."
-            description="FastTrack challenges let you set goals, track progress against friends, and earn badges. Sign in to get started."
-            actions={
-              <SignInDialog
-                buttonClassName="w-full sm:w-auto"
-                buttonLabel="Sign in to join challenges"
-                providers={providers}
-                size="lg"
-              />
-            }
-            preview={
-              <div className="grid gap-3 sm:grid-cols-3">
-                {[
-                  ["Daily Sprint", "7 days", "Consistency"],
-                  ["20-Hour Club", "20h", "Team goal"],
-                  ["Milestone Hunt", "3x", "Autophagy"],
-                ].map(([title, value, label]) => (
-                  <div key={title} className="premium-chip rounded-[1.25rem] p-4">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-                    <p className="mt-2 text-lg font-semibold text-foreground">{value}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{title}</p>
-                  </div>
-                ))}
-              </div>
-            }
-          />
-        </CardContent>
-      </Card>
+        }
+      />
     );
   }
 

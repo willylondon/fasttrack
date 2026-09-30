@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
+import { toast } from "sonner";
 import { signIn } from "next-auth/react";
 import { CircleUserRound, Globe2 } from "lucide-react";
 
@@ -15,8 +16,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { LOCAL_DASHBOARD_STORAGE_KEY } from "@/lib/local-dashboard";
+import { safeStorageWrite, SYNC_AFTER_SIGN_IN_KEY } from "@/lib/local-dashboard";
 import { cn } from "@/lib/utils";
+import { resolveSafeSignInCallback } from "@/lib/auth-recovery";
 
 type SignInDialogProps = {
   buttonClassName?: string;
@@ -47,23 +49,22 @@ export function SignInDialog({
       return "/";
     }
 
-    const currentUrl = new URL(window.location.href);
-    const redirectedCallback = currentUrl.searchParams.get("callbackUrl");
-
-    if (redirectedCallback?.startsWith("/")) {
-      return redirectedCallback;
-    }
-
-    const currentPath = `${currentUrl.pathname}${currentUrl.search}`;
-    return currentPath || "/";
+    return resolveSafeSignInCallback(window.location.href);
   };
 
   const handleSignIn = (provider: "google" | "github") => {
     setPendingProvider(provider);
-    window.sessionStorage.setItem(`${LOCAL_DASHBOARD_STORAGE_KEY}:sync-after-sign-in`, "true");
+    if (!safeStorageWrite("sessionStorage", SYNC_AFTER_SIGN_IN_KEY, "true")) {
+      toast.warning("Device storage is unavailable. Your local progress cannot sync automatically after sign-in.");
+    }
     startTransition(async () => {
-      await signIn(provider, { callbackUrl: resolveCallbackUrl() });
-      setPendingProvider(null);
+      try {
+        await signIn(provider, { callbackUrl: resolveCallbackUrl() });
+      } catch {
+        toast.error("Sign-in couldn’t start. Please try again.");
+      } finally {
+        setPendingProvider(null);
+      }
     });
   };
 
@@ -73,12 +74,12 @@ export function SignInDialog({
         {buttonLabel}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="border border-border/80 bg-card p-0 sm:max-w-md">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto border border-border/80 bg-card p-0 sm:max-w-md [&_[data-slot=dialog-close]]:min-h-11 [&_[data-slot=dialog-close]]:min-w-11">
           <DialogHeader className="p-6 pb-3">
             <Badge variant="outline" className="mb-3 w-fit border-primary/30 text-primary-readable">
               FastTrack account
             </Badge>
-            <DialogTitle>Join FastTrack</DialogTitle>
+            <DialogTitle>Sign in to FastTrack</DialogTitle>
             <DialogDescription>
               Save your window, keep your streak, and stay accountable across your devices.
             </DialogDescription>
@@ -102,11 +103,12 @@ export function SignInDialog({
             </Button>
             {!hasAnyProvider ? (
               <p className="text-sm text-muted-foreground">
-                Sign-in is being configured for this environment. Please try again shortly.
+                Sign-in is unavailable in this environment. You can still track fasts on this device.
               </p>
             ) : null}
+            <Button variant="ghost" className="min-h-11 w-full" onClick={() => setOpen(false)}>Continue without signing in</Button>
           </div>
-          <DialogFooter className="border-t border-border/70 bg-muted/30 px-6 py-4">
+          <DialogFooter className="mx-0 mb-0 sm:mx-0 sm:mb-0 border-t border-border/70 bg-muted/30 px-6 py-4">
             <div className="w-full space-y-2">
               <p className="text-xs text-muted-foreground">
                 Choose the account you want to use for streaks, history, friends, and saved progress.

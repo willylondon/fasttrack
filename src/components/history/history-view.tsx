@@ -333,25 +333,35 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
     return (
       <EmptyState
         eyebrow="History"
-        title="Your fasting history will appear here."
-        description="Completed windows saved on this device will appear here. Sign in to keep your history synced across devices."
+        title="Your first session starts here."
+        description="Finish a fast to see its duration and timing here. Guest sessions are saved in this browser; sign in to sync across devices."
         actions={
           <>
+            <Link href="/" className={cn(buttonVariants({ size: "lg" }), "w-full sm:w-auto")}>
+              Start your first fast
+            </Link>
             <SignInDialog
               buttonClassName="w-full sm:w-auto"
               buttonLabel="Sign in to sync your history"
               providers={providers}
               size="lg"
+              variant="outline"
             />
-            <Link href="/" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full sm:w-auto")}>
-              Back to dashboard
-            </Link>
           </>
         }
         preview={
-          <div className="glass-soft rounded-[1.6rem] p-4">
-            <div className="h-48 rounded-[1.3rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))]" />
-          </div>
+          <ol className="grid gap-5 border-t border-white/[0.1] pt-5 sm:grid-cols-3">
+            {[
+              ["Start", "Choose a window that works for you."],
+              ["Finish", "End your timer when you finish fasting."],
+              ["Review", "See completed sessions and your recent pattern."],
+            ].map(([label, detail], index) => (
+              <li key={label} className="flex gap-3">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-medium text-primary-readable">{index + 1}</span>
+                <div><p className="text-sm font-medium">{label}</p><p className="mt-1 text-sm leading-5 text-muted-foreground">{detail}</p></div>
+              </li>
+            ))}
+          </ol>
         }
       />
     );
@@ -461,7 +471,7 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
           ) : (
             <EmptyState
               eyebrow="No saved sessions"
-              title="Your fasting history will appear here."
+              title="Your first session starts here."
               description="Complete a planned session and FastTrack will start building your trend view, streak summary, and recent log."
               actions={
                 <Link href="/" className={cn(buttonVariants({ size: "lg" }), "w-full sm:w-auto")}>

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { matchesExpectedAccount } from "@/lib/account-guard";
 import { z } from "zod";
 
 import { getErrorMessage, getErrorStatus, getZodMessage, jsonMessage, readJsonBody } from "@/lib/api-responses";
@@ -19,6 +20,7 @@ const importedSessionSchema = z.object({
 });
 
 const importSchema = z.object({
+  expectedAccountId: z.string().uuid().optional(),
   sessions: z
     .array(importedSessionSchema)
     .max(250, "Sync up to 250 local fasts at a time.")
@@ -54,6 +56,10 @@ export async function POST(request: Request) {
 
   if (!parsed.success) {
     return jsonMessage(getZodMessage(parsed.error), 400);
+  }
+
+  if (!matchesExpectedAccount(userId, parsed.data.expectedAccountId)) {
+    return jsonMessage("Your signed-in account changed. Return to the original account before syncing this device’s progress.", 409);
   }
 
   for (const session of parsed.data.sessions) {
