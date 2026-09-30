@@ -197,3 +197,16 @@ test("buildPostSyncLocalDashboardData clears only sessions confirmed by the serv
   assert.equal(result?.sessions.length, 1);
   assert.equal(result?.sessions[0]?.id, "retry-session");
 });
+
+test("failed sync retains both active and completed local progress for retry", () => {
+  const source = normalizeLocalDashboardData({
+    activeSession: { id: "active", userId: "local", startedAt: "2026-05-30T08:00:00Z", createdAt: "2026-05-30T08:00:00Z", endedAt: null, status: "active", plannedMinutes: 960 },
+    sessions: [{ id: "complete", userId: "local", startedAt: "2026-05-29T08:00:00Z", createdAt: "2026-05-29T08:00:00Z", endedAt: "2026-05-29T09:00:00Z", status: "completed", plannedMinutes: 960 }],
+  });
+  const result = buildPostSyncLocalDashboardData(source, { activeSessionSynced: false, completedSessionIds: [] });
+  assert.equal(result?.activeSession?.id, "active");
+  assert.equal(result?.sessions[0]?.id, "complete");
+  const partial = buildPostSyncLocalDashboardData(source, { activeSessionSynced: false, completedSessionIds: ["complete", "unrecognized"] });
+  assert.equal(partial?.activeSession?.id, "active");
+  assert.equal(partial?.sessions.length, 0);
+});

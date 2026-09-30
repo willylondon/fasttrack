@@ -58,7 +58,6 @@ export type SocialProfile = {
   id: string;
   displayName: string | null;
   avatarUrl: string | null;
-  email?: string | null;
 };
 
 export type FeedEvent = {
@@ -520,11 +519,16 @@ export function mapDailyCheckIn(record: DatabaseDailyCheckIn): DailyCheckIn {
 }
 
 export function mapBadge(record: DatabaseBadge): BadgeDefinition {
+  const checkpointCopy = record.slug === "sweet-spot"
+    ? { name: "16-Hour Check-in", description: "Logged a 16-hour window. This badge does not measure autophagy or health benefits." }
+    : record.slug === "extended-warrior"
+      ? { name: "18-Hour Check-in", description: "Logged an 18-hour window. Longer windows are not a measure of better health." }
+      : null;
   return {
     id: record.id,
-    name: record.name,
+    name: checkpointCopy?.name ?? record.name,
     slug: record.slug,
-    description: record.description,
+    description: checkpointCopy?.description ?? record.description,
     icon: record.icon,
     category: record.category,
     requirementType: record.requirement_type,

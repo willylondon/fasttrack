@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 import { getErrorMessage, getErrorStatus, getZodMessage, jsonMessage, readJsonBody } from "@/lib/api-responses";
-import { createFriendRequest, getCurrentUserId, getFriendsPageData } from "@/lib/fasting-data";
+import { createFriendRequest, getCurrentUserId, getFriendsPageData, removeFriendConnection } from "@/lib/fasting-data";
 
 const createFriendSchema = z.object({
-  targetUserId: z.string().min(1, "Choose a FastTrack member to invite."),
+  targetUserId: z.string().uuid("Choose a valid FastTrack member."),
 });
 
 export async function GET() {
@@ -31,6 +32,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
+  const limit = checkRateLimit(`friends:request:${userId}`, 10, 10 * 60_000);
+  if (!limit.allowed) {
+    return NextResponse.json({ message: "Too many friend requests. Try again later." }, {
+      status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) },
+    });
+  }
   const body = await readJsonBody(request);
 
   if (body.error) {
@@ -50,5 +57,20 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = getErrorMessage(error, "Unable to create friend request.");
     return jsonMessage(message, getErrorStatus(message));
+  }
+}
+
+export async function DELETE(request: Request) {
+  const userId = await getCurrentUserId();
+  if (!userId) return jsonMessage("Unauthorized", 401);
+  const body = await readJsonBody(request);
+  if (body.error) return jsonMessage(body.error, 400);
+  const parsed = createFriendSchema.safeParse(body.data);
+  if (!parsed.success) return jsonMessage(getZodMessage(parsed.error), 400);
+  try {
+    await removeFriendConnection(userId, parsed.data.targetUserId);
+    return NextResponse.json({ removed: true });
+  } catch (error) {
+    return jsonMessage(getErrorMessage(error, "Unable to remove friend."), 500);
   }
 }

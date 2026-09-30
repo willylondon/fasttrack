@@ -147,3 +147,46 @@ test("a guest can set an exact earlier end time without the native clock picker"
   await page.getByRole("button", { name: "Save completed fast" }).click();
   await expect(page.getByRole("dialog").getByText("Fast Complete")).toBeVisible();
 });
+
+test("earlier-start date and clock stay reachable above a visible mobile footer", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Start fast", exact: true }).click();
+  await page.getByRole("button", { name: "I understand", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Started earlier", exact: true }).click();
+  await page.getByLabel("Start date", { exact: true }).fill("2026-02-30");
+  await dialog.getByRole("button", { name: "Start fast", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("valid date");
+  await dialog.getByRole("button", { name: "30m ago", exact: true }).click();
+  await page.getByLabel("Start time minute", { exact: true }).scrollIntoViewIfNeeded();
+  const clock = await page.getByLabel("Start time minute", { exact: true }).boundingBox();
+  const footer = await dialog.locator('[data-slot="dialog-footer"]').boundingBox();
+  const viewport = page.viewportSize()!;
+  expect(clock).not.toBeNull();
+  expect(footer).not.toBeNull();
+  expect(clock!.y + clock!.height).toBeLessThanOrEqual(footer!.y);
+  expect(footer!.y + footer!.height).toBeLessThanOrEqual(viewport.height);
+  await dialog.getByRole("button", { name: "Start fast", exact: true }).click();
+  await expect(page.getByRole("button", { name: "End fast", exact: true })).toBeVisible();
+});
+
+test("blocked device storage leaves timer usable with an honest warning", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "localStorage", { get() { throw new DOMException("blocked", "SecurityError"); } });
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await expect(page.getByRole("alert")).toContainText("Device storage is unavailable");
+  await page.getByRole("button", { name: "Start fast", exact: true }).click();
+  await page.getByRole("button", { name: "I understand", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Start fast", exact: true }).click();
+  await expect(page.getByRole("button", { name: "End fast", exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("malformed local session cannot crash dashboard rendering", async ({ page }) => {
+  await page.addInitScript((key) => localStorage.setItem(key, JSON.stringify({ activeSession: { id: "broken", startedAt: "bad" }, sessions: [null, "bad"] })), LOCAL_STORAGE_KEY);
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Start fast", exact: true })).toBeVisible();
+});

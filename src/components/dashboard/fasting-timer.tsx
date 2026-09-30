@@ -43,10 +43,14 @@ import {
 import { FASTING_STAGES, type FastingStage } from "@/lib/fasting-stages";
 import {
   buildPostSyncLocalDashboardData,
+  safeStorageRead,
+  safeStorageWrite,
+  SYNC_AFTER_SIGN_IN_KEY,
   LOCAL_DASHBOARD_STORAGE_KEY,
   readLocalDashboardData,
   writeLocalDashboardData,
 } from "@/lib/local-dashboard";
+import { completionRetryBody, isDefinitiveCompletionRejection, parsePendingCompletions, type PendingCompletion, reconcileFastSession, resolveLocalDateTime } from "@/lib/timer-recovery";
 import { cn } from "@/lib/utils";
 
 type FastingTimerProps = {
@@ -95,7 +99,6 @@ const WINDOW_OPTIONS = [
 ] as const;
 
 const SAFETY_ACKNOWLEDGEMENT_KEY = "fasttrack:safety-acknowledged:v1";
-const SYNC_AFTER_SIGN_IN_KEY = `${LOCAL_DASHBOARD_STORAGE_KEY}:sync-after-sign-in`;
 
 const HOURLY_CHECK_INS = [
   "Choose a window that fits your day and begin when ready.",
@@ -291,22 +294,7 @@ function formatDateDraft(value: string) {
   return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
 }
 
-function resolveManualStartTimeFromDraft(dateValue: string, timeValue: string) {
-  const dateMatch = /^\d{4}-\d{2}-\d{2}$/.test(dateValue);
-  const timeMatch = /^([01]\d|2[0-3]):([0-5]\d)$/.test(timeValue);
-
-  if (!dateMatch || !timeMatch) {
-    return null;
-  }
-
-  const parsed = new Date(`${dateValue}T${timeValue}:00`);
-
-  if (!Number.isFinite(parsed.getTime())) {
-    return null;
-  }
-
-  return parsed.toISOString();
-}
+const resolveManualStartTimeFromDraft = resolveLocalDateTime;
 
 type LiveTimerPanelProps = {
   activeSession: DashboardData["activeSession"];
@@ -560,12 +548,34 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   const [safetyAcknowledged, setSafetyAcknowledged] = useState(false);
   const [safetyDialogOpen, setSafetyDialogOpen] = useState(false);
   const [localDashboardReady, setLocalDashboardReady] = useState(false);
+  const [storageWarning, setStorageWarning] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncAttempt, setSyncAttempt] = useState(0);
+  const [pendingCompletions, setPendingCompletions] = useState<PendingCompletion[]>([]);
+  const mutationRef = useRef(false);
+  const generationRef = useRef(0);
+  const refreshSequenceRef = useRef(0);
+  const accountRef = useRef(userId);
+
+  const startOperationRef = useRef<string | null>(null);
   const milestoneInFlightRef = useRef(false);
   const lastDashboardRefreshRef = useRef(0);
   const shareCardRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    setSafetyAcknowledged(window.localStorage.getItem(SAFETY_ACKNOWLEDGEMENT_KEY) === "true");
+    accountRef.current = userId;
+    mutationRef.current = false;
+    setIsMutatingFast(false);
+    setSyncError(null);
+    generationRef.current++;
+    lastDashboardRefreshRef.current = 0;
+    startOperationRef.current = null;
+    setPendingCompletions(userId ? parsePendingCompletions(safeStorageRead("localStorage", `fasttrack:pending-rewards:${userId}`), userId) : []);
+    return () => { accountRef.current = undefined; };
+  }, [userId]);
+
+  useEffect(() => {
+    setSafetyAcknowledged(safeStorageRead("localStorage", SAFETY_ACKNOWLEDGEMENT_KEY) === "true");
   }, []);
 
   useEffect(() => {
@@ -584,7 +594,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
       return;
     }
 
-    writeLocalDashboardData(dashboardData);
+    setStorageWarning(!writeLocalDashboardData(dashboardData));
   }, [dashboardData, localDashboardReady, signedIn]);
 
   const plannedMinutes = WINDOW_OPTIONS.find((option) => option.label === selectedWindow)?.minutes ?? 16 * 60;
@@ -663,11 +673,14 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
       return undefined;
     }
 
-    lastDashboardRefreshRef.current = currentTime;
+    const generation = generationRef.current;
+    const sequence = ++refreshSequenceRef.current;
+    const account = userId;
 
     try {
       const response = await fetch("/api/dashboard", {
         method: "GET",
+        headers: { "X-FastTrack-Account": account },
         cache: "no-store",
       });
 
@@ -676,6 +689,8 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
       }
 
       const nextDashboard = (await response.json()) as DashboardData;
+      if (accountRef.current !== account || generation !== generationRef.current || sequence !== refreshSequenceRef.current) return undefined;
+      lastDashboardRefreshRef.current = Date.now();
       setDashboardData(nextDashboard);
       return nextDashboard;
     } catch (error) {
@@ -687,104 +702,93 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   }, [userId]);
 
   useEffect(() => {
-    if (!signedIn || !userId) {
+    if (!signedIn || !userId || mutationRef.current) return;
+    const marker = safeStorageRead("sessionStorage", SYNC_AFTER_SIGN_IN_KEY);
+    if (marker !== "true" && marker !== userId) return;
+    // Claim legacy sign-in intent for this account before attempting transmission.
+    if (!safeStorageWrite("sessionStorage", SYNC_AFTER_SIGN_IN_KEY, userId)) {
+      setSyncError("Device storage is unavailable. Local history has not been synced.");
       return;
     }
-
-    if (window.sessionStorage.getItem(SYNC_AFTER_SIGN_IN_KEY) !== "true") {
-      return;
-    }
-
-    window.sessionStorage.removeItem(SYNC_AFTER_SIGN_IN_KEY);
     const localData = readLocalDashboardData();
     const completedSessions = localData.sessions.filter(
       (session): session is typeof session & { endedAt: string } =>
         session.status === "completed" && Boolean(session.endedAt) && (session.durationMinutes ?? 0) > 0
     );
-
     if (!localData.activeSession && !completedSessions.length) {
+      safeStorageWrite("sessionStorage", SYNC_AFTER_SIGN_IN_KEY, null);
+      setSyncError(null);
       return;
     }
-
+    mutationRef.current = true;
+    generationRef.current++;
+    setIsMutatingFast(true);
+    setSyncError(null);
+    const account = userId;
     void (async () => {
       let activeSessionSynced = false;
-      let completedSessionIds: string[] = [];
-      const syncErrors: string[] = [];
-
-      if (completedSessions.length) {
-        try {
+      const completedSessionIds: string[] = [];
+      const errors: string[] = [];
+      try {
+        for (let offset = 0; offset < completedSessions.length; offset += 250) {
+          if (accountRef.current !== account) return;
+          const batch = completedSessions.slice(offset, offset + 250);
           const response = await fetch("/api/fasts/import", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              sessions: completedSessions.map((session) => ({
-                sourceId: session.id,
-                startedAt: session.startedAt,
-                endedAt: session.endedAt,
-                plannedMinutes: session.plannedMinutes,
-                notes: session.notes,
-              })),
-            }),
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ expectedAccountId: account, sessions: batch.map((session) => ({
+              sourceId: session.id, startedAt: session.startedAt, endedAt: session.endedAt,
+              plannedMinutes: session.plannedMinutes, notes: session.notes,
+            })) }),
           });
-
-          if (!response.ok) {
-            throw new Error(await readApiError(response));
-          }
-
-          const payload = (await response.json()) as { syncedSourceIds: string[] };
-          completedSessionIds = payload.syncedSourceIds;
-        } catch (error) {
-          syncErrors.push(error instanceof Error ? error.message : "Completed history could not be synced.");
+          if (!response.ok) throw new Error(await readApiError(response));
+          const payload = await response.json() as { syncedSourceIds?: string[] };
+          if (!Array.isArray(payload.syncedSourceIds)) throw new Error("History sync returned an invalid response.");
+          completedSessionIds.push(...payload.syncedSourceIds.filter((id) => batch.some((item) => item.id === id)));
         }
-      }
-
-      if (localData.activeSession) {
-        try {
+      } catch (error) { errors.push(error instanceof Error ? error.message : "History could not be synced."); }
+      try {
+        if (localData.activeSession && accountRef.current === account) {
           const response = await fetch("/api/fasts", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              plannedMinutes: localData.activeSession.plannedMinutes,
-              startedAt: localData.activeSession.startedAt,
-            }),
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ expectedAccountId: account, sourceId: localData.activeSession.id,
+              plannedMinutes: localData.activeSession.plannedMinutes, startedAt: localData.activeSession.startedAt }),
           });
-
-          if (!response.ok) {
-            throw new Error(await readApiError(response));
-          }
-
+          if (!response.ok) throw new Error(await readApiError(response));
+          const payload = await response.json() as { session: DashboardData["sessions"][number] };
+          if (!payload.session?.id) throw new Error("Active fast sync returned an invalid response.");
           activeSessionSynced = true;
-        } catch (error) {
-          syncErrors.push(error instanceof Error ? error.message : "Active fast could not be synced.");
+          if (accountRef.current === account) {
+            generationRef.current++;
+            setDashboardData((current) => reconcileFastSession(current, payload.session));
+          }
         }
-      }
-
+      } catch (error) { errors.push(error instanceof Error ? error.message : "Active fast could not be synced."); }
+      if (accountRef.current !== account) return;
+      // Read latest storage so confirmed imports cannot erase progress made in another tab.
+      const remaining = buildPostSyncLocalDashboardData(readLocalDashboardData(), {
+        activeSessionSynced: activeSessionSynced && readLocalDashboardData().activeSession?.id === localData.activeSession?.id,
+        completedSessionIds,
+      });
+      const saved = remaining ? writeLocalDashboardData(remaining) : safeStorageWrite("localStorage", LOCAL_DASHBOARD_STORAGE_KEY, null);
+      if (!saved) errors.push("Synced progress could not be cleared from this device. Retry when storage is available.");
+      const outstanding = remaining?.activeSession || remaining?.sessions.some((item) => item.status === "completed" && (item.durationMinutes ?? 0) > 0);
+      if (!outstanding && saved) {
+        if (!safeStorageWrite("sessionStorage", SYNC_AFTER_SIGN_IN_KEY, null)) errors.push("Progress synced, but device storage is unavailable.");
+      } else if (!errors.length) errors.push("Some local progress still needs to sync.");
       if (activeSessionSynced || completedSessionIds.length) {
-        const remainingLocalData = buildPostSyncLocalDashboardData(localData, {
-          activeSessionSynced,
-          completedSessionIds,
-        });
-
-        if (remainingLocalData) {
-          writeLocalDashboardData(remainingLocalData);
-        } else {
-          window.localStorage.removeItem(LOCAL_DASHBOARD_STORAGE_KEY);
-        }
-        await refreshDashboard({ force: true });
-        toast.success(
-          completedSessionIds.length && activeSessionSynced
-            ? "Local fast and history synced to your account."
-            : completedSessionIds.length
-              ? "Local fasting history synced to your account."
-              : "Local active fast synced to your account."
-        );
+        await refreshDashboard({ force: true, quiet: true });
+        toast.success("Local progress saved to your account.");
       }
-
-      if (syncErrors.length) {
-        toast.error(syncErrors.join(" "));
+      setSyncError(errors.length ? errors.join(" ") : null);
+    })().catch(() => {
+      if (accountRef.current === account) setSyncError("Local progress could not be synced. Please retry.");
+    }).finally(() => {
+      if (accountRef.current === account) {
+        mutationRef.current = false;
+        setIsMutatingFast(false);
       }
-    })();
-  }, [refreshDashboard, signedIn, userId]);
+    });
+  }, [refreshDashboard, signedIn, userId, syncAttempt]);
 
   useEffect(() => {
     if (!userId) {
@@ -807,7 +811,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   }, [refreshDashboard, userId]);
 
   const handleStageReached = useCallback((stageIndex: number) => {
-    if (!activeSession || stageIndex === 0) {
+    if (mutationRef.current || !activeSession || stageIndex === 0) {
       return;
     }
 
@@ -816,6 +820,8 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     }
 
     milestoneInFlightRef.current = true;
+    const milestoneGeneration = generationRef.current;
+    const milestoneSessionId = activeSession.id;
 
     if (!userId) {
       setDashboardData((current) => ({
@@ -842,6 +848,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
           },
           body: JSON.stringify({
             action: "milestone",
+            expectedAccountId: userId,
             stageIndex,
           }),
         });
@@ -850,7 +857,8 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
           throw new Error(await readApiError(response));
         }
 
-        setDashboardData((current) => ({
+        if (generationRef.current !== milestoneGeneration || accountRef.current !== userId) return;
+        setDashboardData((current) => current.activeSession?.id !== milestoneSessionId ? current : ({
           ...current,
           milestoneStageReached: stageIndex,
           activeSession: current.activeSession
@@ -870,6 +878,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   }, [activeSession, dashboardData.milestoneStageReached, userId]);
 
   function openStartTimeDialog(mode: Exclude<StartDialogMode, null>) {
+    if (mutationRef.current) return;
     if (mode === "start" && activeSession) {
       toast.error("Finish the current fast before starting another.");
       return;
@@ -888,7 +897,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   }
 
   function acknowledgeSafetyAndStart() {
-    window.localStorage.setItem(SAFETY_ACKNOWLEDGEMENT_KEY, "true");
+    if (!safeStorageWrite("localStorage", SAFETY_ACKNOWLEDGEMENT_KEY, "true")) setStorageWarning(true);
     setSafetyAcknowledged(true);
     setSafetyDialogOpen(false);
     setStartDialogMode("start");
@@ -899,6 +908,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   }
 
   function closeStartTimeDialog() {
+    if (mutationRef.current) return;
     setStartDialogMode(null);
     setStartTimeError(null);
     setPendingStartAdjustment(null);
@@ -914,6 +924,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   }
 
   async function applyStartTimeChange(payload: PendingStartAdjustment) {
+    if (mutationRef.current) return;
     if (payload.mode === "edit" && !activeSession) {
       toast.error("No active fast is available to adjust.");
       return;
@@ -961,12 +972,15 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
       closeStartTimeDialog();
       toast.success(
         payload.mode === "start"
-          ? "Fast started. Progress saved on this device."
+          ? "Fast started. Tracking on this device."
           : "Start time updated. Progress recalculated on this device."
       );
       return;
     }
 
+    mutationRef.current = true;
+    generationRef.current++;
+    const account = userId;
     setIsMutatingFast(true);
 
     try {
@@ -979,10 +993,13 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
           ...(payload.mode === "start"
             ? {
                 plannedMinutes,
+                expectedAccountId: userId,
+                sourceId: startOperationRef.current ?? (startOperationRef.current = crypto.randomUUID()),
                 startedAt: payload.startedAt,
               }
             : {
                 action: "edit_start",
+                expectedAccountId: userId,
                 startedAt: payload.startedAt,
               }),
         }),
@@ -993,17 +1010,22 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
       }
 
       const responsePayload = (await response.json()) as { session: DashboardData["activeSession"] };
-      setDashboardData((current) => ({
-        ...current,
-        activeSession: responsePayload.session,
-        milestoneStageReached: responsePayload.session?.stageReached ?? 0,
-      }));
-      closeStartTimeDialog();
-      toast.success(payload.mode === "start" ? "Fast started. Progress saved." : "Start time updated. Progress recalculated.");
+      if (accountRef.current !== account) return;
+      if (!responsePayload.session) throw new Error("The server did not return the saved fast.");
+      generationRef.current++;
+      setDashboardData((current) => reconcileFastSession(current, responsePayload.session!));
+      startOperationRef.current = null;
+      setStartDialogMode(null);
+      setStartTimeError(null);
+      setPendingStartAdjustment(null);
+      toast.success(responsePayload.session.status !== "active" ? "Your previously saved fast was recovered." : payload.mode === "start" ? "Fast started. Progress saved." : "Start time updated. Progress recalculated.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to save this start time.");
     } finally {
-      setIsMutatingFast(false);
+      if (accountRef.current === account) {
+        mutationRef.current = false;
+        setIsMutatingFast(false);
+      }
     }
   }
 
@@ -1036,6 +1058,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   }
 
   function openSessionAction(action: Exclude<PendingAction, null>) {
+    if (mutationRef.current) return;
     setPendingAction(action);
     setEndTimeError(null);
     setEndTimeOverride(null);
@@ -1069,7 +1092,65 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     setManualEndTime(new Date(Math.min(plannedEndMs, Date.now())).toISOString());
   }
 
+  function savePendingCompletions(intents: PendingCompletion[], account: string) {
+    const unique = parsePendingCompletions(JSON.stringify(intents), account);
+    setPendingCompletions(unique);
+    if (!safeStorageWrite("localStorage", `fasttrack:pending-rewards:${account}`, unique.length ? JSON.stringify(unique) : null)) {
+      setStorageWarning(true);
+      toast.warning("Device storage is unavailable. Keep this page open until the completion is confirmed.");
+    }
+  }
+
+  async function retryPendingRewards() {
+    if (!userId || mutationRef.current) return;
+    const account = userId;
+    let remaining = [...pendingCompletions];
+    mutationRef.current = true;
+    generationRef.current++;
+    setIsMutatingFast(true);
+    try {
+      for (const intent of pendingCompletions) {
+        if (accountRef.current !== account) return;
+        const response = await fetch(`/api/fasts/${intent.sessionId}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(completionRetryBody(intent)),
+        });
+        if (accountRef.current !== account) return;
+        if (!response.ok) {
+          const message = await readApiError(response);
+          if (isDefinitiveCompletionRejection(response.status, message)) {
+            remaining = remaining.filter((entry) => entry.sessionId !== intent.sessionId);
+            savePendingCompletions(remaining, account);
+          }
+          throw new Error(message);
+        }
+        const payload = await response.json() as { session?: DashboardData["sessions"][number]; rewardsPending?: boolean };
+        if (accountRef.current !== account) return;
+        if (!payload.session || payload.session.id !== intent.sessionId || payload.session.status !== "completed") {
+          throw new Error("Completion could not be confirmed. Please retry.");
+        }
+        generationRef.current++;
+        setDashboardData((current) => reconcileFastSession(current, payload.session!));
+        setPendingAction(null);
+        setActiveMilestoneIndex(null);
+        if (payload.rewardsPending) throw new Error("Your completed fast is saved. Rewards are still updating; try again later.");
+        remaining = remaining.filter((entry) => entry.sessionId !== intent.sessionId);
+        savePendingCompletions(remaining, account);
+      }
+      await refreshDashboard({ force: true, quiet: true });
+      if (accountRef.current === account) toast.success("Completion and rewards confirmed.");
+    } catch (error) {
+      if (accountRef.current === account) toast.error(error instanceof Error ? error.message : "Completion could not be confirmed yet.");
+    } finally {
+      if (accountRef.current === account) {
+        mutationRef.current = false;
+        setIsMutatingFast(false);
+      }
+    }
+  }
+
   async function resolveSession(action: Exclude<PendingAction, null>, completedAt?: string) {
+    if (mutationRef.current) return;
     if (!activeSession) {
       return;
     }
@@ -1133,11 +1214,20 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         });
       }
 
-      toast.success(action === "complete" ? "Fast complete. Progress saved on this device." : "Fast cancelled.");
+      toast.success(action === "complete" ? "Fast complete. Recorded on this page." : "Fast cancelled.");
       return;
     }
 
+    mutationRef.current = true;
+    generationRef.current++;
+    const account = userId;
     setIsMutatingFast(true);
+    const intent: PendingCompletion | null = action === "complete" ?
+      pendingCompletions.find((entry) => entry.sessionId === activeSession.id) ??
+      { sessionId: activeSession.id, accountId: account, endedAt: completedAt ?? new Date().toISOString() } : null;
+    const queued = intent ? [...pendingCompletions.filter((entry) => entry.sessionId !== intent.sessionId), intent] : pendingCompletions;
+    // Write ahead of the request: a lost response or page reload must preserve the chosen end time.
+    if (intent) savePendingCompletions(queued, account);
 
     try {
       const response = await fetch(`/api/fasts/${activeSession.id}`, {
@@ -1147,25 +1237,40 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         },
         body: JSON.stringify({
           action,
+          expectedAccountId: userId,
           notes: "",
-          ...(action === "complete" && completedAt ? { endedAt: completedAt } : {}),
+          ...(intent ? completionRetryBody(intent) : {}),
         }),
       });
 
       if (!response.ok) {
-        throw new Error(await readApiError(response));
+        const message = await readApiError(response);
+        if (intent && accountRef.current === account && isDefinitiveCompletionRejection(response.status, message)) {
+          savePendingCompletions(queued.filter((entry) => entry.sessionId !== intent.sessionId), account);
+        }
+        throw new Error(message);
       }
 
       const payload = (await response.json()) as {
         session: DashboardData["sessions"][number];
         gamification?: FastCompletionGamification;
+        rewardsPending?: boolean;
       };
       const finishedSession = payload.session;
-
+      if (accountRef.current !== account) return;
+      if (!finishedSession?.id || finishedSession.id !== activeSession.id ||
+          finishedSession.status !== (action === "complete" ? "completed" : "cancelled")) throw new Error("The server did not confirm this fast. Please retry.");
+      if (action === "complete") {
+        savePendingCompletions(payload.rewardsPending ? queued : queued.filter((entry) => entry.sessionId !== finishedSession.id), account);
+      }
+      generationRef.current++;
+      setDashboardData((current) => reconcileFastSession(current, finishedSession));
       setPendingAction(null);
       setActiveMilestoneIndex(null);
 
-      const nextDashboard = await refreshDashboard({ force: true });
+      const nextDashboard = await refreshDashboard({ force: true, quiet: true });
+      if (accountRef.current !== account) return;
+      if (!nextDashboard) toast.warning("Fast saved. Account totals will refresh when your connection returns.");
 
       if (action === "complete" && finishedSession) {
         const stage = getStageForMinutes(finishedSession.durationMinutes ?? 0);
@@ -1194,7 +1299,10 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to update this fast.");
     } finally {
-      setIsMutatingFast(false);
+      if (accountRef.current === account) {
+        mutationRef.current = false;
+        setIsMutatingFast(false);
+      }
     }
   }
 
@@ -1258,6 +1366,9 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+      {storageWarning ? <p role="alert" className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm">{signedIn ? "Device storage is unavailable. Your saved fasts are safe, but pending retries may not survive closing this page." : "Device storage is unavailable. Progress is only kept while this page stays open."}</p> : null}
+      {pendingCompletions.length ? <div role="status" className="rounded-xl border border-primary/30 p-3 text-sm"><p>A completion or reward update still needs confirmation. Retry to check its status.</p><Button className="mt-2" disabled={isMutatingFast} onClick={() => void retryPendingRewards()} variant="outline">Retry completion</Button></div> : null}
+      {syncError ? <div role="alert" className="rounded-xl border border-amber-400/30 p-3 text-sm"><p>{syncError}</p><Button className="mt-2" disabled={isMutatingFast} onClick={() => setSyncAttempt((value) => value + 1)} variant="outline">Retry sync</Button></div> : null}
       {!signedIn && !activeSession ? (
         <Card className="order-2 section-enter surface-primary relative overflow-hidden" style={{ animationDelay: "100ms" }}>
           <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
@@ -1367,12 +1478,12 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         <Dialog
           open
           onOpenChange={(open) => {
-            if (!open) {
+            if (!open && !mutationRef.current) {
               closeStartTimeDialog();
             }
           }}
         >
-          <DialogContent className="bottom-[calc(env(safe-area-inset-bottom)+5.75rem)] top-[calc(env(safe-area-inset-top)+0.5rem)] mx-2 flex max-w-[calc(100vw-1rem)] translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:bottom-auto sm:top-1/2 sm:mx-auto sm:max-h-[min(720px,calc(100dvh-2rem))] sm:max-w-lg sm:-translate-y-1/2">
+          <DialogContent showCloseButton={!isMutatingFast} className="top-[calc(env(safe-area-inset-top)+0.5rem)] mx-0 flex h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1rem)] max-h-[720px] max-w-[calc(100vw-1rem)] translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:top-1/2 sm:mx-auto sm:h-auto sm:max-h-[min(720px,calc(100dvh-2rem))] sm:max-w-lg sm:-translate-y-1/2">
             <DialogHeader className="shrink-0 px-4 pb-3 pt-4 pr-12 sm:px-5 sm:pt-5">
               <DialogTitle>When did your fast start?</DialogTitle>
               <DialogDescription>
@@ -1382,7 +1493,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
               </DialogDescription>
             </DialogHeader>
 
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 pb-4 sm:px-5">
+            <fieldset disabled={isMutatingFast} className="min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 pb-4 sm:px-5">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {([
                   { label: "Now", value: "now" },
@@ -1517,9 +1628,9 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
               ) : null}
 
               {startTimeError ? <p className="text-sm text-destructive" role="alert">{startTimeError}</p> : null}
-            </div>
+            </fieldset>
 
-            <DialogFooter className="mx-0 mb-0 shrink-0 px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:mx-0 sm:mb-0 sm:px-5 sm:py-4">
+            <DialogFooter className="relative z-10 mx-0 mb-0 shrink-0 bg-card px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:mx-0 sm:mb-0 sm:px-5 sm:py-4">
               <Button onClick={closeStartTimeDialog} variant="outline">
                 Keep current
               </Button>
@@ -1536,7 +1647,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         <Dialog
           open
           onOpenChange={(open) => {
-            if (!open) {
+            if (!open && !mutationRef.current) {
               setPendingStartAdjustment(null);
             }
           }}
@@ -1553,7 +1664,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
               Use it only when you are correcting the actual start of the window.
             </div>
             <DialogFooter>
-              <Button onClick={() => setPendingStartAdjustment(null)} variant="outline">
+              <Button disabled={isMutatingFast} onClick={() => setPendingStartAdjustment(null)} variant="outline">
                 Review time
               </Button>
               <Button
@@ -1571,7 +1682,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
         <Dialog
           open
           onOpenChange={(open) => {
-            if (!open) {
+            if (!open && !mutationRef.current) {
               setPendingAction(null);
               setEndTimeError(null);
             }
@@ -1704,7 +1815,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
               </div>
             ) : null}
             <DialogFooter>
-              <Button onClick={() => setPendingAction(null)} variant="outline">
+              <Button disabled={isMutatingFast} onClick={() => setPendingAction(null)} variant="outline">
                 Keep current
               </Button>
               <Button

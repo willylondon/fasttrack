@@ -1,4 +1,6 @@
+import { FastConflictError } from "@/lib/fasting-errors";
 import { NextResponse } from "next/server";
+import { matchesExpectedAccount } from "@/lib/account-guard";
 import { z } from "zod";
 
 import { getErrorMessage, getErrorStatus, getZodMessage, jsonMessage, readJsonBody } from "@/lib/api-responses";
@@ -7,6 +9,8 @@ import { getCurrentUserId, startFast } from "@/lib/fasting-data";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 const startFastSchema = z.object({
+  expectedAccountId: z.string().uuid().optional(),
+  sourceId: z.string().trim().min(1).max(128).optional(),
   plannedMinutes: z
     .number()
     .int()
@@ -46,12 +50,16 @@ export async function POST(request: Request) {
     return jsonMessage(getZodMessage(parsed.error), 400);
   }
 
+  if (!matchesExpectedAccount(userId, parsed.data.expectedAccountId)) {
+    return jsonMessage("Your signed-in account changed. Return to the original account before syncing this device’s progress.", 409);
+  }
+
   try {
-    const session = await startFast(userId, parsed.data.plannedMinutes, parsed.data.startedAt);
+    const session = await startFast(userId, parsed.data.plannedMinutes, parsed.data.startedAt, parsed.data.sourceId);
 
     return NextResponse.json({ session });
   } catch (error) {
     const message = getErrorMessage(error, "Unable to start fast.");
-    return jsonMessage(message, getErrorStatus(message));
+    return jsonMessage(message, error instanceof FastConflictError ? 409 : getErrorStatus(message));
   }
 }

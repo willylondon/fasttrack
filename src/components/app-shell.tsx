@@ -57,6 +57,7 @@ export async function AppShell({
 }: AppShellProps) {
   const primaryPath = getPrimaryPath(currentPath);
   const profile = session?.user?.id ? await getProfileById(session.user.id) : null;
+  const routeTitle = navItems.find((item) => item.href === currentPath)?.label ?? title;
   const showGuestBanner = !session?.user && currentPath === "/";
 
   return (
@@ -67,7 +68,6 @@ export async function AppShell({
       >
         Skip to main content
       </a>
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.08),transparent_20%),radial-gradient(circle_at_bottom_right,rgba(34,197,94,0.08),transparent_22%)]" />
       <div className="relative mx-auto flex min-h-screen w-full max-w-[880px] flex-col px-4 pb-0 pt-[calc(env(safe-area-inset-top)+0.75rem)] sm:px-6 sm:pt-[calc(env(safe-area-inset-top)+1rem)]">
         <header className="glass-card relative z-40 overflow-visible rounded-[1.9rem] p-3.5 shadow-[0_20px_80px_rgba(0,0,0,0.25)] sm:p-4">
           <div className="flex items-center justify-between gap-4">
@@ -82,9 +82,10 @@ export async function AppShell({
                   <Link
                     key={item.href}
                     href={item.href}
+                    aria-current={item.href === primaryPath ? "page" : undefined}
                     prefetch={false}
                     className={cn(
-                      "group/nav relative inline-flex h-10 items-center justify-center gap-2 rounded-full px-4 text-sm font-medium transition-all duration-200",
+                      "group/nav relative inline-flex h-11 items-center justify-center gap-2 rounded-full px-3 text-sm font-medium transition-all duration-200",
                       item.href === primaryPath
                         ? "bg-white/[0.1] text-foreground shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
                         : "text-muted-foreground hover:bg-white/[0.06] hover:text-foreground"
@@ -107,13 +108,9 @@ export async function AppShell({
               <AuthButton profile={profile} providers={providers} user={session?.user} />
             </div>
           </div>
-          <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <h1 className="sr-only font-[family:var(--font-heading)] text-3xl font-semibold tracking-tight lg:not-sr-only lg:mt-2 lg:text-[2.5rem]">
-                {title}
-              </h1>
-            </div>
-            <p className="hidden max-w-lg text-sm leading-6 text-muted-foreground lg:block lg:text-base">{description}</p>
+          <div className={cn("mt-5 border-t border-white/[0.08] pt-4", currentPath === "/" && "sr-only lg:not-sr-only lg:mt-5 lg:border-t lg:pt-4")}>
+            <h1 className="font-[family:var(--font-heading)] text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">{routeTitle}</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
           </div>
         </header>
         <div className="mt-4 grid gap-4">
@@ -143,13 +140,15 @@ export async function AppShell({
         </div>
         <footer className="pb-[calc(env(safe-area-inset-bottom)+1.5rem)] text-xs text-muted-foreground lg:pb-4">
           <div className="flex flex-wrap items-center gap-2">
-            <Link href="/privacy" className="transition-colors hover:text-foreground">
+            <Link href="/privacy" className="inline-flex min-h-11 items-center rounded-md px-1 transition-colors hover:text-foreground">
               Privacy
             </Link>
             <span>•</span>
-            <Link href="/terms" className="transition-colors hover:text-foreground">
+            <Link href="/terms" className="inline-flex min-h-11 items-center rounded-md px-1 transition-colors hover:text-foreground">
               Terms
             </Link>
+            <span>•</span>
+            <a href="mailto:willardwells@gmail.com" className="inline-flex min-h-11 items-center transition-colors hover:text-foreground">Support</a>
           </div>
         </footer>
       </div>

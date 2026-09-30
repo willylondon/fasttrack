@@ -65,7 +65,7 @@ export function MobileNav({ currentPath }: MobileNavProps) {
               >
                 <Icon className="size-4" />
               </span>
-              <span className="max-w-full text-[10px] font-medium tracking-normal">{item.label}</span>
+              <span className="max-w-full text-[11px] font-medium tracking-normal">{item.label}</span>
             </Link>
           );
         })}

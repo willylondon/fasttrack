@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 import { Check, Search, Sparkles, UserPlus, Users, X } from "lucide-react";
@@ -66,6 +66,9 @@ async function readApiError(response: Response) {
 }
 
 export function FriendsView({ initialData, providers, signedIn }: FriendsViewProps) {
+  const mutationLock = useRef(false);
+  const searchGeneration = useRef(0);
+  const [refreshError, setRefreshError] = useState(false);
   const [friendsData, setFriendsData] = useState(initialData);
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<FriendSearchResult[]>([]);
@@ -103,10 +106,12 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
 
     const nextData = (await response.json()) as FriendsPageData;
     setFriendsData(nextData);
+    setRefreshError(false);
     return nextData;
   }
 
   async function runSearch() {
+    const generation = ++searchGeneration.current;
     const parsedQuery = searchSchema.safeParse(query);
 
     if (!query.trim()) {
@@ -134,16 +139,21 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
       }
 
       const payload = (await response.json()) as { results: FriendSearchResult[] };
+      if (generation !== searchGeneration.current) return;
       setSearchResults(payload.results);
       setSearchFeedback(payload.results.length ? "Results ready." : "No matching FastTrack members found yet.");
     } catch (error) {
+      if (generation !== searchGeneration.current) return;
+      setSearchFeedback("Search couldn’t finish. Try again.");
       toast.error(error instanceof Error ? error.message : "Unable to search profiles.");
     } finally {
-      setIsSearching(false);
+      if (generation === searchGeneration.current) setIsSearching(false);
     }
   }
 
   async function addFriend(targetUserId: string) {
+    if (mutationLock.current) return;
+    mutationLock.current = true;
     setPendingActionId(targetUserId);
 
     try {
@@ -159,17 +169,20 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
         throw new Error(await readApiError(response));
       }
 
-      await refreshFriends();
       setSearchResults((current) => current.filter((result) => result.id !== targetUserId));
       toast.success("Friend request sent.");
+      try { await refreshFriends(); } catch { setRefreshError(true); }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to send request.");
     } finally {
+      mutationLock.current = false;
       setPendingActionId(null);
     }
   }
 
   async function handleRequest(friendshipId: string, action: "accepted" | "rejected" | "cancel") {
+    if (mutationLock.current) return;
+    mutationLock.current = true;
     setPendingActionId(friendshipId);
 
     try {
@@ -185,7 +198,11 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
         throw new Error(await readApiError(response));
       }
 
-      await refreshFriends();
+      setFriendsData((current) => ({ ...current,
+        incomingRequests: current.incomingRequests.filter((request) => request.id !== friendshipId),
+        outgoingRequests: current.outgoingRequests.filter((request) => request.id !== friendshipId),
+      }));
+      try { await refreshFriends(); } catch { setRefreshError(true); }
       toast.success(
         action === "accepted"
           ? "Friend request accepted."
@@ -196,6 +213,29 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to update request.");
     } finally {
+      mutationLock.current = false;
+      setPendingActionId(null);
+    }
+  }
+
+  async function removeFriend(targetUserId: string, name: string) {
+    if (mutationLock.current || !window.confirm(`Remove ${name} from your circle? You will stop sharing friend-only progress with each other. Either person can send a new invitation later.`)) return;
+    mutationLock.current = true;
+    setPendingActionId(targetUserId);
+    try {
+      const response = await fetch("/api/friends", { method: "DELETE",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ targetUserId }) });
+      if (!response.ok) throw new Error(await readApiError(response));
+      setFriendsData((current) => ({ ...current,
+        friends: current.friends.filter((friend) => friend.id !== targetUserId),
+        liveSessions: current.liveSessions.filter((session) => session.userId !== targetUserId),
+      }));
+      toast.success("Friend removed. Friend-only sharing has stopped.");
+      try { await refreshFriends(); } catch { setRefreshError(true); }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to remove friend.");
+    } finally {
+      mutationLock.current = false;
       setPendingActionId(null);
     }
   }
@@ -245,6 +285,12 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
 
   return (
     <div className="grid gap-6">
+      {refreshError ? (
+        <div role="status" className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm">
+          Your change was saved. Your circle couldn’t refresh.
+          <Button className="ml-2" variant="outline" onClick={() => void refreshFriends().catch(() => setRefreshError(true))}>Retry refresh</Button>
+        </div>
+      ) : null}
       <Card className="section-enter" style={{ animationDelay: "0ms" }}>
         <CardHeader>
           <div className="flex items-center gap-3">
@@ -253,14 +299,14 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
             </div>
             <div>
               <CardTitle>Find Friends</CardTitle>
-              <CardDescription>Search FastTrack profiles by display name and invite the people you trust.</CardDescription>
+              <CardDescription>Search by display name. Connecting shares completed progress with each other; live status is a separate opt-in.</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => { searchGeneration.current += 1; setIsSearching(false); setQuery(event.target.value); setSearchResults([]); setSearchFeedback(null); }}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   event.preventDefault();
@@ -318,7 +364,7 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
         </CardContent>
       </Card>
 
-      {(friendsData.incomingRequests.length || friendsData.outgoingRequests.length) && (
+      {Boolean(friendsData.incomingRequests.length || friendsData.outgoingRequests.length) && (
         <Card className="section-enter" style={{ animationDelay: "50ms" }}>
           <CardHeader>
             <div className="flex items-center gap-3">
@@ -327,7 +373,7 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
               </div>
               <div>
                 <CardTitle>Pending requests</CardTitle>
-                <CardDescription>Incoming and outgoing requests, all in one place.</CardDescription>
+                <CardDescription>Accepting shares your completed progress and streaks with this person. Live status stays a separate opt-in.</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -346,9 +392,9 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                         <AvatarFallback>{getInitials(request.sender.displayName)}</AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="text-sm font-medium text-foreground">{request.sender.displayName ?? request.sender.email}</p>
+                        <p className="text-sm font-medium text-foreground">{request.sender.displayName ?? "FastTrack member"}</p>
                         <p className="text-xs text-muted-foreground">
-                          {request.sender.email ?? "FastTrack member"} • {formatDistanceToNow(new Date(request.createdAt), { addSuffix: true })}
+                          {formatDistanceToNow(new Date(request.createdAt), { addSuffix: true })}
                         </p>
                       </div>
                     </div>
@@ -393,9 +439,9 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                         <AvatarFallback>{getInitials(request.receiver.displayName)}</AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="text-sm font-medium text-foreground">{request.receiver.displayName ?? request.receiver.email}</p>
+                        <p className="text-sm font-medium text-foreground">{request.receiver.displayName ?? "FastTrack member"}</p>
                         <p className="text-xs text-muted-foreground">
-                          {request.receiver.email ?? "FastTrack member"} • sent {formatDistanceToNow(new Date(request.createdAt), { addSuffix: true })}
+                          Sent {formatDistanceToNow(new Date(request.createdAt), { addSuffix: true })}
                         </p>
                       </div>
                     </div>
@@ -423,8 +469,8 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
               <Users className="size-4" />
             </div>
             <div>
-              <CardTitle>Friends leaderboard</CardTitle>
-              <CardDescription>Live fasters rank by who has been in the window the longest.</CardDescription>
+              <CardTitle>Your circle</CardTitle>
+              <CardDescription>Encourage each other at your own pace. Longer fasts are not a competition.</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -432,11 +478,9 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
           {friendsData.liveSessions.length ? (
             <section className="space-y-3">
               <h2 className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Fasting now</h2>
-              {friendsData.liveSessions.map((session, index) => {
+              {[...friendsData.liveSessions].sort((a, b) => (a.displayName ?? "").localeCompare(b.displayName ?? "")).map((session) => {
                 const elapsedMinutes = getElapsedMinutes({ startedAt: session.startedAt }, now);
                 const stage = getStageForMinutes(elapsedMinutes);
-                const rank = index + 1;
-                const isLeader = rank === 1;
                 const friend = friendsById.get(session.userId);
 
                 return (
@@ -444,22 +488,10 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                     key={session.userId}
                     className={cn(
                       "glass-soft flex flex-col gap-4 rounded-[1.5rem] px-4 py-4 sm:flex-row sm:items-center sm:justify-between",
-                      session.isCurrentUser ? "border border-primary/25 shadow-[0_16px_40px_rgba(124,92,255,0.12)]" : "",
-                      isLeader ? "bg-gold/5" : ""
+                      session.isCurrentUser ? "border border-primary/25 shadow-[0_16px_40px_rgba(124,92,255,0.12)]" : ""
                     )}
                   >
                     <div className="flex items-center gap-3">
-                      <div
-                        className={cn(
-                          "flex size-9 shrink-0 items-center justify-center rounded-full border text-sm font-semibold tabular-nums",
-                          isLeader
-                            ? "border-gold/35 bg-gold/15 text-gold"
-                            : "border-border/70 bg-background/60 text-muted-foreground"
-                        )}
-                        aria-label={`Rank ${rank}`}
-                      >
-                        {rank}
-                      </div>
                       <Avatar size="sm">
                         <AvatarImage src={session.avatarUrl ?? undefined} alt={session.displayName ?? "Friend"} />
                         <AvatarFallback>{getInitials(session.displayName)}</AvatarFallback>
@@ -472,11 +504,6 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                           <span className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em] text-accent">
                             Live now
                           </span>
-                          {isLeader ? (
-                            <span className="rounded-full border border-gold/25 bg-gold/10 px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em] text-gold">
-                              Leading
-                            </span>
-                          ) : null}
                           <span
                             className="rounded-full border bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em]"
                             style={{
@@ -576,6 +603,11 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                           encouragementCount: friend.encouragementCount,
                         }}
                       />
+                    ) : null}
+                    {!friend.isCurrentUser ? (
+                      <Button variant="ghost" disabled={pendingActionId !== null}
+                        onClick={() => void removeFriend(friend.id, friend.displayName ?? "this friend")}
+                        aria-label={`Remove ${friend.displayName ?? "friend"} from your circle`}>Remove</Button>
                     ) : null}
                     <div className="text-right">
                       {friend.activeSession ? (
