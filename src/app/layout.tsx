@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { MobileNav } from "@/components/layout/mobile-nav";
 import { PerformanceDiagnostics } from "@/components/system/performance-diagnostics";
 import { PwaSupport } from "@/components/system/pwa-support";
 import { Toaster } from "@/components/ui/sonner";
@@ -73,6 +74,7 @@ export default function RootLayout({
       <body className="theme min-h-full font-sans">
         <PwaSupport />
         {children}
+        <MobileNav />
         <PerformanceDiagnostics />
         <Toaster
           closeButton

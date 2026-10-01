@@ -270,7 +270,19 @@ export async function getLeaderboardData(userId: string | null | undefined): Pro
   };
 }
 
-export async function getProfilePageData(userId: string | null | undefined): Promise<ProfilePageData> {
+/** Optional settings must not gate the primary profile screen. Always account-scoped. */
+export async function getPushNotificationStatus(userId: string | null | undefined): Promise<boolean | null> {
+  if (!userId) return false;
+  try {
+    const result = await createAdminClient().from("push_subscriptions").select("id").eq("user_id", userId).limit(1);
+    return result.error ? null : (result.data ?? []).length > 0;
+  } catch { return null; }
+}
+
+export async function getProfilePageData(
+  userId: string | null | undefined,
+  options: { deferPushStatus?: boolean } = {},
+): Promise<ProfilePageData> {
   if (!userId) {
     return {
       profile: null,
@@ -286,7 +298,7 @@ export async function getProfilePageData(userId: string | null | undefined): Pro
 
   const supabase = createAdminClient();
 
-  const [profileResult, badgeResult, userBadgeResult, activityResult, notificationInbox, subscriptionResult, computedProfile] = await Promise.all([
+  const [profileResult, badgeResult, userBadgeResult, activityResult, notificationInbox, notificationsEnabled, computedProfile] = await Promise.all([
     supabase.from("profiles").select(PROFILE_COLUMNS).eq("id", userId).single(),
     supabase.from("badges").select("*").order("name"),
     supabase
@@ -301,7 +313,7 @@ export async function getProfilePageData(userId: string | null | undefined): Pro
       .order("created_at", { ascending: false })
       .limit(12),
     getAppNotifications(userId, 8),
-    supabase.from("push_subscriptions").select("id").eq("user_id", userId).limit(1),
+    options.deferPushStatus ? Promise.resolve(null) : getPushNotificationStatus(userId),
     getComputedProfileFields(userId),
   ]);
 
@@ -353,7 +365,7 @@ export async function getProfilePageData(userId: string | null | undefined): Pro
       })
     ),
     notifications: notificationInbox,
-    notificationsEnabled: !subscriptionResult.error && (subscriptionResult.data ?? []).length > 0,
+    notificationsEnabled,
     liveStatusSharingEnabled: profile.shareLiveStatus,
     liveStatusSharingSupported,
   };

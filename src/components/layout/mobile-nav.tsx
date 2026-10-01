@@ -1,14 +1,11 @@
 "use client";
 
-import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { TabLink } from "@/components/layout/tab-link";
 import { CalendarDays, Home, Trophy, UserRound, Users } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { NavigationPending } from "@/components/layout/navigation-pending";
-
-type MobileNavProps = {
-  currentPath: string;
-};
 
 const navItems = [
   { href: "/", label: "Today", icon: Home },
@@ -18,7 +15,7 @@ const navItems = [
   { href: "/profile", label: "Profile", icon: UserRound },
 ] as const;
 
-function getPrimaryPath(currentPath: MobileNavProps["currentPath"]) {
+function getPrimaryPath(currentPath: string) {
   if (currentPath === "/feed") {
     return "/friends";
   }
@@ -34,8 +31,8 @@ function getPrimaryPath(currentPath: MobileNavProps["currentPath"]) {
   return currentPath;
 }
 
-export function MobileNav({ currentPath }: MobileNavProps) {
-  const primaryPath = getPrimaryPath(currentPath);
+export function MobileNav() {
+  const primaryPath = getPrimaryPath(usePathname());
 
   return (
     <nav aria-label="Primary" className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.1] bg-[rgba(11,11,11,0.95)] shadow-[0_-18px_40px_rgba(0,0,0,0.28)] backdrop-blur lg:hidden">
@@ -45,7 +42,7 @@ export function MobileNav({ currentPath }: MobileNavProps) {
           const Icon = item.icon;
 
           return (
-            <Link
+            <TabLink
               aria-label={item.label}
               aria-current={active ? "page" : undefined}
               key={item.href}
@@ -67,7 +64,7 @@ export function MobileNav({ currentPath }: MobileNavProps) {
               </span>
               <span className="max-w-full text-[11px] font-medium tracking-normal">{item.label}</span>
               <NavigationPending />
-            </Link>
+            </TabLink>
           );
         })}
       </div>
