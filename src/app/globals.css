@@ -141,10 +141,12 @@
     }
   }
 
+  /* Route content is useful as soon as it arrives; do not hide it behind a
+     staggered entrance (History previously added up to 700ms + 350ms). */
   .section-enter {
-    opacity: 0;
-    transform: translateY(12px);
-    animation: section-enter 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    opacity: 1;
+    transform: none;
+    animation: none;
   }
 
   .animate-stage-copy {
@@ -181,18 +183,6 @@
     transform: rotate(var(--confetti-rotate));
     animation: confetti-fall 3s linear forwards;
     animation-delay: var(--confetti-delay);
-  }
-}
-
-@keyframes section-enter {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
   }
 }
 

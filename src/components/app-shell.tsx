@@ -5,7 +5,8 @@ import { CalendarDays, Home, Trophy, UserRound, Users } from "lucide-react";
 
 import { AuthButton } from "@/components/auth/auth-button";
 import { BrandMark } from "@/components/brand-mark";
-import { MobileNav } from "@/components/layout/mobile-nav";
+import { TabLink } from "@/components/layout/tab-link";
+import { RouteContentReady } from "@/components/layout/route-content-ready";
 import { NavigationPending } from "@/components/layout/navigation-pending";
 import { InstallPrompt } from "@/components/system/install-prompt";
 import { PerformanceCheckButton } from "@/components/system/performance-diagnostics";
@@ -89,7 +90,7 @@ export function AppShell({
                 const Icon = item.icon;
 
                 return (
-                  <Link
+                  <TabLink
                     key={item.href}
                     href={item.href}
                     aria-current={item.href === primaryPath ? "page" : undefined}
@@ -109,7 +110,7 @@ export function AppShell({
                         item.href === primaryPath ? "opacity-100" : "opacity-0 group-hover/nav:opacity-60"
                       )}
                     />
-                  </Link>
+                  </TabLink>
                 );
               })}
               <Separator orientation="vertical" className="mx-1 h-6" />
@@ -143,6 +144,7 @@ export function AppShell({
           className="flex-1 pt-5 pb-[calc(env(safe-area-inset-bottom)+7.5rem)] outline-none sm:py-7 lg:pb-8"
         >
           {children}
+          <RouteContentReady path={currentPath} />
         </main>
         <div className="pb-[calc(env(safe-area-inset-bottom)+7.5rem)] lg:pb-6">
           <InstallPrompt currentPath={currentPath} />
@@ -163,7 +165,6 @@ export function AppShell({
           </div>
         </footer>
       </div>
-      <MobileNav currentPath={currentPath} />
     </div>
   );
 }

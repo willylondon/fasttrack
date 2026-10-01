@@ -1,7 +1,7 @@
 import test, { afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { getDashboardData, getHistoryData, getProfilePageData } from "../src/lib/fasting-data.ts";
+import { getDashboardData, getHistoryData, getProfilePageData, getPushNotificationStatus } from "../src/lib/fasting-data.ts";
 
 const originalUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -13,12 +13,14 @@ afterEach(() => {
   else process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
 });
 
-function controlledDatabase(failTable?: string) {
+function controlledDatabase(failTable?: string, slowTable?: string) {
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://performance.invalid";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "synthetic-test-key";
   const queries: { url: URL; method: string }[] = [];
   let release!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
+  let releaseSlow!: () => void;
+  const slowGate = new Promise<void>((resolve) => { releaseSlow = resolve; });
   mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : input);
     assert.equal(url.origin, "https://performance.invalid");
@@ -34,6 +36,7 @@ function controlledDatabase(failTable?: string) {
       assert.equal(url.searchParams.get("status"), "eq.accepted");
     }
     await gate;
+    if (table === slowTable) await slowGate;
     if (table === failTable) return new Response(JSON.stringify({ message: "Read failed" }), { status: 400 });
     const profile = { id: "self", display_name: "Test", avatar_url: null, share_live_status: false,
       total_fasts: 0, total_fast_hours: 0, current_streak: 0, longest_streak: 0,
@@ -46,7 +49,7 @@ function controlledDatabase(failTable?: string) {
       headers: { "Content-Type": "application/json", "Content-Range": "*/2" },
     });
   });
-  return { queries, release };
+  return { queries, release, releaseSlow };
 }
 
 for (const [name, read, count] of [
@@ -108,4 +111,35 @@ test("confirmed completion does not block on optional account refresh", () => {
   assert.ok(confirmed.includes("generationRef.current !== refreshGeneration"));
   assert.ok(confirmed.includes("current?.sessionId === finishedSession.id"));
   assert.ok(confirmed.includes("currentStreak: payload.progress?.currentStreak ?? null"));
+});
+
+
+test("optional push settings cannot hold the primary profile behind a slow response", async () => {
+  const { release, releaseSlow } = controlledDatabase(undefined, "push_subscriptions");
+  let fullReady = false;
+  const full = getProfilePageData("self").then((result) => { fullReady = true; return result; });
+  const push = getPushNotificationStatus("self");
+  const primary = getProfilePageData("self", { deferPushStatus: true });
+  release();
+  try {
+    const result = await primary;
+    assert.equal(result.profile?.id, "self");
+    assert.equal(result.notificationsEnabled, null, "unknown must not appear as disabled");
+    assert.equal(fullReady, false, "baseline shape still waits for optional lookup");
+  } finally { releaseSlow(); }
+  assert.equal(await push, false);
+  assert.equal((await full).notificationsEnabled, false);
+});
+
+test("push-status read errors remain unknown, not a guessed off state", async () => {
+  const { release } = controlledDatabase("push_subscriptions");
+  release();
+  assert.equal(await getPushNotificationStatus("self"), null);
+});
+
+test("signed-out push status does not query any account", async () => {
+  const { queries, release } = controlledDatabase();
+  release();
+  assert.equal(await getPushNotificationStatus(null), false);
+  assert.equal(queries.length, 0);
 });

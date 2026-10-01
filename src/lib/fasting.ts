@@ -250,7 +250,7 @@ export type ProfilePageData = {
   earnedBadges: UserBadge[];
   recentActivity: FeedEvent[];
   notifications: AppNotification[];
-  notificationsEnabled: boolean;
+  notificationsEnabled: boolean | null;
   liveStatusSharingEnabled: boolean;
   liveStatusSharingSupported: boolean;
 };

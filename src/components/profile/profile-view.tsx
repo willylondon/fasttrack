@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
-import { Bell, BellOff, Check, Image as ImageIcon, RotateCcw, Save, Upload, UserRound, Eye, EyeOff, Trophy } from "lucide-react";
+import { Check, Image as ImageIcon, RotateCcw, Save, Upload, UserRound, Eye, EyeOff, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
+import { PushNotificationControl } from "@/components/profile/push-notification-control";
 import { SignInDialog } from "@/components/auth/sign-in-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -26,6 +27,7 @@ type ProfileViewProps = {
     github: boolean;
   };
   signedIn: boolean;
+  notificationControl?: ReactNode;
 };
 
 function getInitials(value?: string | null) {
@@ -41,19 +43,6 @@ function getInitials(value?: string | null) {
     .toUpperCase();
 }
 
-function urlBase64ToUint8Array(base64String: string) {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-
-  for (let index = 0; index < rawData.length; index += 1) {
-    outputArray[index] = rawData.charCodeAt(index);
-  }
-
-  return outputArray;
-}
-
 async function readProfilePayload(response: Response) {
   return response.json().catch(() => null) as Promise<{
     profile?: ProfileSummary;
@@ -61,18 +50,9 @@ async function readProfilePayload(response: Response) {
   } | null>;
 }
 
-async function readNotificationPayload(response: Response) {
-  return response.json().catch(() => null) as Promise<{
-    saved?: boolean;
-    message?: string;
-  } | null>;
-}
-
-export function ProfileView({ initialData, providers, signedIn }: ProfileViewProps) {
+export function ProfileView({ initialData, providers, signedIn, notificationControl }: ProfileViewProps) {
   const [profile, setProfile] = useState(initialData.profile);
   const [notifications, setNotifications] = useState(initialData.notifications);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(initialData.notificationsEnabled);
-  const [isTogglingNotifications, setIsTogglingNotifications] = useState(false);
   const [liveStatusSharingEnabled, setLiveStatusSharingEnabled] = useState(initialData.liveStatusSharingEnabled);
   const [isUpdatingLiveSharing, setIsUpdatingLiveSharing] = useState(false);
   const [displayNameDraft, setDisplayNameDraft] = useState(initialData.profile?.displayName ?? "");
@@ -141,94 +121,6 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
     normalizedDisplayName !== (currentProfile.displayName ?? "") ||
     normalizedAvatarUrl !== (currentProfile.avatarUrl ?? "");
   const unreadCount = notifications.filter((notification) => !notification.readAt).length;
-
-  async function toggleNotifications() {
-    setIsTogglingNotifications(true);
-
-    try {
-      if (!("serviceWorker" in navigator)) {
-        throw new Error("Service workers are not supported in this browser.");
-      }
-
-      const registration = await navigator.serviceWorker.register("/sw.js");
-
-      if (notificationsEnabled) {
-        const subscription = await registration.pushManager?.getSubscription();
-        await subscription?.unsubscribe();
-
-        const response = await fetch("/api/notifications/subscribe", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            enabled: false,
-          }),
-        });
-        const payload = await readNotificationPayload(response);
-
-        if (!response.ok || payload?.saved === false) {
-          throw new Error(payload?.message ?? "Unable to turn notifications off.");
-        }
-
-        setNotificationsEnabled(false);
-        toast.success("Notifications off.");
-        return;
-      }
-
-      if (!("Notification" in window)) {
-        throw new Error("Notifications are not supported in this browser.");
-      }
-
-      const permission = await Notification.requestPermission();
-
-      if (permission !== "granted") {
-        throw new Error("Notification permission was not granted.");
-      }
-
-      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-      let subscriptionPayload: PushSubscription | null = null;
-
-      if ("PushManager" in window && vapidKey) {
-        subscriptionPayload = await registration.pushManager.getSubscription();
-
-        if (!subscriptionPayload) {
-          subscriptionPayload = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(vapidKey),
-          });
-        }
-      }
-
-      const response = await fetch("/api/notifications/subscribe", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          enabled: !notificationsEnabled,
-          subscription: subscriptionPayload,
-        }),
-      });
-      const payload = await readNotificationPayload(response);
-
-      if (!response.ok || payload?.saved === false) {
-        throw new Error(payload?.message ?? "Unable to save notification settings.");
-      }
-
-      await registration.showNotification("FastTrack notifications enabled", {
-        body: "You’ll see alerts here when streaks, badges, and milestones fire.",
-        icon: "/favicon.ico",
-      });
-
-      setNotificationsEnabled(true);
-      toast.success("Notifications enabled.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to update notifications.");
-    } finally {
-      setIsTogglingNotifications(false);
-    }
-  }
 
   async function toggleLiveSharing() {
     setIsUpdatingLiveSharing(true);
@@ -389,19 +281,7 @@ export function ProfileView({ initialData, providers, signedIn }: ProfileViewPro
                 <CardDescription>Level {currentProfile.level} • {currentProfile.xp} XP earned</CardDescription>
               </div>
             </div>
-            <Button
-              className="rounded-2xl"
-              disabled={isTogglingNotifications || !notificationsReady}
-              onClick={() => void toggleNotifications()}
-              variant={notificationsEnabled ? "secondary" : "outline"}
-            >
-              {notificationsEnabled ? <Bell className="mr-2 size-4" /> : <BellOff className="mr-2 size-4" />}
-              {notificationsReady
-                ? notificationsEnabled
-                  ? "Notifications on"
-                  : "Enable notifications"
-                : "Notifications unavailable"}
-            </Button>
+            {notificationControl ?? <PushNotificationControl initialEnabled={initialData.notificationsEnabled} />}
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
             <Link href="/leaderboard" className={cn(buttonVariants({ variant: "outline" }), "w-full sm:w-auto")}>
