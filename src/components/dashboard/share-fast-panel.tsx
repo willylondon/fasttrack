@@ -10,10 +10,12 @@ import {
   SHARE_CARD_SIZES,
   ShareFastCard,
   ShareFastCardPreview,
+  getLongFastNote,
   type ShareCardFormat,
   type ShareCardTheme,
 } from "@/components/dashboard/share-fast-card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { DialogFooter } from "@/components/ui/dialog";
 import { formatCompactDuration } from "@/lib/fasting";
 import { safeStorageRead, safeStorageWrite } from "@/lib/local-dashboard";
@@ -26,9 +28,13 @@ type ShareCardOptions = {
   format: ShareCardFormat;
   theme: ShareCardTheme;
   showTimes: boolean;
+  showNote: boolean;
+  /** null means "use the profile's first name"; an empty string hides the name. */
+  name: string | null;
 };
 
-const DEFAULT_SHARE_CARD_OPTIONS: ShareCardOptions = { format: "post", theme: "dusk", showTimes: true };
+const DEFAULT_SHARE_CARD_OPTIONS: ShareCardOptions = { format: "post", theme: "dusk", showTimes: true, showNote: true, name: null };
+const MAX_NAME_LENGTH = 24;
 
 const OPTION_GROUPS = [
   { key: "format", label: "Format", options: [{ value: "post", label: "Post" }, { value: "story", label: "Story" }] },
@@ -42,6 +48,8 @@ function readShareCardOptions(): ShareCardOptions {
       format: parsed?.format === "story" ? "story" : "post",
       theme: parsed?.theme === "daybreak" ? "daybreak" : "dusk",
       showTimes: parsed?.showTimes !== false,
+      showNote: parsed?.showNote !== false,
+      name: typeof parsed?.name === "string" ? parsed.name.slice(0, MAX_NAME_LENGTH) : null,
     };
   } catch {
     return DEFAULT_SHARE_CARD_OPTIONS;
@@ -56,6 +64,8 @@ export type ShareableFast = {
   plannedMinutes: number;
   currentStreak?: number | null;
   totalFasts?: number | null;
+  /** Profile display name; the card uses its first word. */
+  displayName?: string | null;
 };
 
 type ShareFastPanelProps = {
@@ -85,7 +95,11 @@ export function ShareFastPanel({ fast, onDone, children }: ShareFastPanelProps) 
     });
   }
 
-  const imageKey = [fast.id, fast.durationMinutes, fast.endedAt, fast.currentStreak, fast.totalFasts, options.format, options.theme, options.showTimes].join("|");
+  const profileFirstName = fast.displayName?.trim().split(/\s+/)[0]?.slice(0, MAX_NAME_LENGTH) ?? "";
+  const cardName = (options.name ?? profileFirstName).trim();
+  const hasLongFastNote = getLongFastNote(fast.durationMinutes) !== null;
+
+  const imageKey = [cardName, options.showNote, fast.id, fast.durationMinutes, fast.endedAt, fast.currentStreak, fast.totalFasts, options.format, options.theme, options.showTimes].join("|");
 
   const renderImage = useCallback(async () => {
     const node = cardRef.current;
@@ -184,6 +198,8 @@ export function ShareFastPanel({ fast, onDone, children }: ShareFastPanelProps) 
     startedAt: fast.startedAt,
     theme: options.theme,
     totalFasts: fast.totalFasts,
+    name: cardName,
+    showNote: options.showNote,
   };
 
   return (
@@ -225,6 +241,29 @@ export function ShareFastPanel({ fast, onDone, children }: ShareFastPanelProps) 
           type="checkbox"
         />
       </label>
+
+      <label className="block space-y-1.5">
+        <span className="text-sm text-muted-foreground">Name on card</span>
+        <Input
+          autoComplete="given-name"
+          maxLength={MAX_NAME_LENGTH}
+          onChange={(event) => updateOptions({ name: event.target.value })}
+          placeholder="Leave blank to hide"
+          value={options.name ?? profileFirstName}
+        />
+      </label>
+
+      {hasLongFastNote ? (
+        <label className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 text-sm text-foreground">
+          Add a note about long fasts
+          <input
+            checked={options.showNote}
+            className="size-5 accent-[hsl(var(--primary))]"
+            onChange={(event) => updateOptions({ showNote: event.target.checked })}
+            type="checkbox"
+          />
+        </label>
+      ) : null}
 
       {children}
 
