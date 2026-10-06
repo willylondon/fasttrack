@@ -657,6 +657,7 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
                             endedAt: session.endedAt!,
                             plannedMinutes: session.plannedMinutes,
                             totalFasts: countFastsThrough(session),
+                            displayName: history.profile?.displayName,
                           })
                         }
                         size="sm"

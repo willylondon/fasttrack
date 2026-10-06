@@ -1799,6 +1799,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                 plannedMinutes: completionSummary.plannedMinutes,
                 currentStreak: completionSummary.currentStreak,
                 totalFasts: completionSummary.totalFasts,
+                displayName: dashboardData.profile?.displayName,
               }}
               onDone={() => setCompletionSummary(null)}
             >

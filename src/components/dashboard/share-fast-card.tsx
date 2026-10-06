@@ -21,7 +21,35 @@ type ShareFastCardProps = {
   format?: ShareCardFormat;
   theme?: ShareCardTheme;
   showTimes?: boolean;
+  name?: string | null;
+  showNote?: boolean;
 };
+
+const TWENTY_HOURS = 20 * 60;
+const FULL_DAY = 24 * 60;
+
+/** A short congratulation that scales with how long the fast ran. */
+export function getCongratsLine(durationMinutes: number, plannedMinutes?: number | null, name?: string | null) {
+  const who = name?.trim();
+  if (durationMinutes >= FULL_DAY) return who ? `A full day, ${who}!` : "A full day!";
+  if (durationMinutes >= TWENTY_HOURS) return who ? `20+ hours, ${who}. Strong work.` : "20+ hours. Strong work.";
+  if (plannedMinutes && durationMinutes >= plannedMinutes) return who ? `Goal reached. Well done, ${who}.` : "Goal reached. Well done.";
+  return who ? `Nice work, ${who}.` : "Nice work.";
+}
+
+/**
+ * A conservative note for long fasts. Kept to well-established effects (glycogen use,
+ * a shift toward fat for fuel, rising ketones) and framed for "most people".
+ */
+export function getLongFastNote(durationMinutes: number) {
+  if (durationMinutes >= FULL_DAY) {
+    return "After a full day, most people's bodies run mainly on stored fat, and ketone levels are typically rising.";
+  }
+  if (durationMinutes >= TWENTY_HOURS) {
+    return "Past 20 hours, most people have used up much of their stored sugar and are burning more fat for fuel.";
+  }
+  return null;
+}
 
 const THEMES: Record<
   ShareCardTheme,
@@ -90,6 +118,13 @@ function arcPath(center: number, radius: number, startDegrees: number, sweepDegr
   return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} 1 ${end.x} ${end.y}`;
 }
 
+function mixHex(from: string, to: string, amount: number) {
+  const channel = (hex: string, index: number) => parseInt(hex.slice(1 + index * 2, 3 + index * 2), 16);
+  return `#${[0, 1, 2]
+    .map((index) => Math.round(channel(from, index) + (channel(to, index) - channel(from, index)) * amount).toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
 function durationParts(minutes: number) {
   const safeMinutes = Math.max(0, Math.round(minutes));
   const hours = Math.floor(safeMinutes / 60);
@@ -141,16 +176,15 @@ function FastWindowDial({
   const showGoal = goalSweep !== null && goalSweep < 360 && Math.abs(goalSweep - sweep) > 3;
   const goalInner = showGoal ? polar(center, radius - stroke * 0.95, startAngle + goalSweep) : null;
   const goalOuter = showGoal ? polar(center, radius + stroke * 0.95, startAngle + goalSweep) : null;
-  const gradientId = `share-arc-${idSuffix}`;
+  // A gradient along the arc is drawn as short segments; an SVG linear gradient collapses
+  // into a hard seam once the arc wraps most of the way around the dial.
+  const segmentCount = Math.max(1, Math.ceil(sweep / 2));
+  const segmentSweep = sweep / segmentCount;
   const glowId = `share-glow-${idSuffix}`;
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
       <defs>
-        <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={startPoint.x} y1={startPoint.y} x2={endPoint.x} y2={endPoint.y}>
-          <stop offset="0%" stopColor={palette.arcFrom} />
-          <stop offset="100%" stopColor={palette.arcTo} />
-        </linearGradient>
         <radialGradient id={glowId}>
           <stop offset="0%" stopColor={palette.glow} />
           <stop offset="100%" stopColor={palette.glow} stopOpacity="0" />
@@ -196,13 +230,17 @@ function FastWindowDial({
         );
       })}
 
-      <path
-        d={arcPath(center, radius, startAngle, sweep)}
-        fill="none"
-        stroke={`url(#${gradientId})`}
-        strokeWidth={stroke}
-        strokeLinecap="round"
-      />
+      {!fullDay ? <circle cx={startPoint.x} cy={startPoint.y} r={stroke / 2} fill={palette.arcFrom} /> : null}
+      {Array.from({ length: segmentCount }, (_, index) => (
+        <path
+          key={index}
+          d={arcPath(center, radius, startAngle + index * segmentSweep, Math.min(segmentSweep + 0.6, sweep - index * segmentSweep))}
+          fill="none"
+          stroke={mixHex(palette.arcFrom, palette.arcTo, segmentCount === 1 ? 1 : index / (segmentCount - 1))}
+          strokeWidth={stroke}
+        />
+      ))}
+      {!fullDay ? <circle cx={endPoint.x} cy={endPoint.y} r={stroke / 2} fill={palette.arcTo} /> : null}
 
       {goalInner && goalOuter ? (
         <line x1={goalInner.x} y1={goalInner.y} x2={goalOuter.x} y2={goalOuter.y} stroke={palette.ink} strokeOpacity={0.7} strokeWidth={4} strokeLinecap="round" />
@@ -225,13 +263,17 @@ export const ShareFastCard = forwardRef<HTMLDivElement, ShareFastCardProps>(func
     format: cardFormat = "post",
     theme = "dusk",
     showTimes = true,
+    name,
+    showNote = true,
   },
   ref
 ) {
   const palette = THEMES[theme];
   const { width, height } = SHARE_CARD_SIZES[cardFormat];
   const story = cardFormat === "story";
-  const dialSize = story ? 860 : 720;
+  const note = showNote ? getLongFastNote(durationMinutes) : null;
+  const congrats = getCongratsLine(durationMinutes, plannedMinutes, name);
+  const dialSize = story ? 820 : note ? 600 : showTimes ? 640 : 680;
   const goalReached = plannedMinutes ? durationMinutes >= plannedMinutes : false;
   const sameDay = format(new Date(startedAt), "yyyy-MM-dd") === format(new Date(endedAt), "yyyy-MM-dd");
   const chips = [
@@ -264,6 +306,12 @@ export const ShareFastCard = forwardRef<HTMLDivElement, ShareFastCardProps>(func
       </div>
 
       <div className="flex flex-1 flex-col items-center justify-center">
+        <p
+          className="text-center"
+          style={{ fontSize: story ? 56 : 46, fontWeight: 600, letterSpacing: "-0.025em", lineHeight: 1.15, maxWidth: 880, marginBottom: story ? 56 : 28 }}
+        >
+          {congrats}
+        </p>
         <div className="relative flex items-center justify-center" style={{ width: dialSize, height: dialSize }}>
           <FastWindowDial
             size={dialSize}
@@ -278,14 +326,14 @@ export const ShareFastCard = forwardRef<HTMLDivElement, ShareFastCardProps>(func
             <p className="flex items-baseline" style={{ gap: story ? 22 : 16, lineHeight: 1 }}>
               {durationParts(durationMinutes).map((part) => (
                 <span key={part.unit} className="flex items-baseline">
-                  <span style={{ fontSize: story ? 148 : 118, fontWeight: 650, letterSpacing: "-0.055em" }}>{part.value}</span>
-                  <span style={{ fontSize: story ? 60 : 50, fontWeight: 450, color: palette.muted, marginLeft: 6, letterSpacing: "-0.02em" }}>
+                  <span style={{ fontSize: Math.round(dialSize * 0.165), fontWeight: 650, letterSpacing: "-0.055em" }}>{part.value}</span>
+                  <span style={{ fontSize: Math.round(dialSize * 0.07), fontWeight: 450, color: palette.muted, marginLeft: 6, letterSpacing: "-0.02em" }}>
                     {part.unit}
                   </span>
                 </span>
               ))}
             </p>
-            <p style={{ marginTop: story ? 28 : 20, fontSize: story ? 38 : 32, fontWeight: 500, color: palette.muted }}>
+            <p style={{ marginTop: Math.round(dialSize * 0.028), fontSize: Math.round(dialSize * 0.045), fontWeight: 500, color: palette.muted }}>
               {plannedMinutes
                 ? goalReached
                   ? `${compactGoal(plannedMinutes)} goal reached`
@@ -313,6 +361,15 @@ export const ShareFastCard = forwardRef<HTMLDivElement, ShareFastCardProps>(func
               <p style={{ marginTop: 8, fontSize: 48, fontWeight: 600, letterSpacing: "-0.03em" }}>{formatClock(endedAt)}</p>
             </div>
           </div>
+        ) : null}
+
+        {note ? (
+          <p
+            className="text-center"
+            style={{ marginTop: story ? 72 : 36, maxWidth: 840, fontSize: story ? 34 : 29, lineHeight: 1.45, color: palette.muted, fontWeight: 450 }}
+          >
+            {note}
+          </p>
         ) : null}
       </div>
 
