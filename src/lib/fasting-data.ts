@@ -1080,8 +1080,8 @@ export async function searchProfiles(userId: string, query: string) {
   const candidateUsers = await supabase
     .from("profiles")
     .select("id,display_name,avatar_url,current_streak")
-    .ilike("display_name", `%${normalizedQuery}%`)
-    .limit(12);
+    .ilike("display_name", `%${normalizedQuery.replace(/[\\%_]/g, "\\$&")}%`)
+    .limit(12 + blockedIds.size);
 
   if (candidateUsers.error) {
     throw candidateUsers.error;

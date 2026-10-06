@@ -32,3 +32,7 @@ export function getErrorStatus(message: string) {
 export function jsonMessage(message: string, status: number) {
   return NextResponse.json({ message }, { status });
 }
+
+export function rateLimitedResponse(retryAfterSeconds: number, message = "Too many requests. Try again shortly.") {
+  return NextResponse.json({ message }, { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } });
+}

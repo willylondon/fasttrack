@@ -1,7 +1,8 @@
+import { checkRateLimit } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { getErrorMessage, getErrorStatus, getZodMessage, jsonMessage, readJsonBody } from "@/lib/api-responses";
+import { getErrorMessage, getErrorStatus, getZodMessage, jsonMessage, readJsonBody, rateLimitedResponse } from "@/lib/api-responses";
 import { cancelOutgoingFriendRequest, getCurrentUserId, respondToFriendRequest } from "@/lib/fasting-data";
 
 const respondFriendSchema = z.object({
@@ -20,6 +21,11 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
   if (!userId) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const rateLimit = checkRateLimit(`friends:respond:${userId}`, 30, 60_000);
+  if (!rateLimit.allowed) {
+    return rateLimitedResponse(rateLimit.retryAfterSeconds);
   }
 
   const body = await readJsonBody(request);

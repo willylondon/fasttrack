@@ -1,14 +1,15 @@
+import { checkRateLimit } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { getErrorMessage, getZodMessage, jsonMessage, readJsonBody } from "@/lib/api-responses";
+import { getErrorMessage, getZodMessage, jsonMessage, readJsonBody, rateLimitedResponse } from "@/lib/api-responses";
 import { createChallenge, getChallengesListData, getCurrentUserId } from "@/lib/fasting-data";
 
 const createChallengeSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters.").max(80),
   description: z.string().max(300).optional(),
   challengeType: z.enum(["streak_days", "total_hours", "daily_fast", "milestone_reach"]),
-  targetValue: z.number().int().min(1, "Target must be at least 1."),
+  targetValue: z.number().int().min(1, "Target must be at least 1.").max(10_000, "Target is too large."),
   durationDays: z.number().int().min(1).max(90),
   visibility: z.enum(["circle", "public"]).default("circle"),
 });
@@ -34,6 +35,11 @@ export async function POST(request: Request) {
 
   if (!userId) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const rateLimit = checkRateLimit(`challenges:create:${userId}`, 5, 10 * 60_000);
+  if (!rateLimit.allowed) {
+    return rateLimitedResponse(rateLimit.retryAfterSeconds, "Too many new challenges. Try again later.");
   }
 
   const body = await readJsonBody(request);

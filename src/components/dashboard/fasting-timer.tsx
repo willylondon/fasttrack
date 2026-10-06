@@ -2,11 +2,11 @@
 
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
-import { Check, ChevronDown, Clock3, Flag, LoaderCircle, PencilLine, Share2, ShieldAlert, X } from "lucide-react";
+import { Check, ChevronDown, Clock3, Download, Flag, LoaderCircle, PencilLine, Share2, ShieldAlert, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { FastingMilestoneBar } from "@/components/dashboard/fasting-milestone-bar";
-import { ShareFastCard } from "@/components/dashboard/share-fast-card";
+import { SHARE_CARD_SIZES, ShareFastCard, ShareFastCardPreview, type ShareCardFormat, type ShareCardTheme } from "@/components/dashboard/share-fast-card";
 import { TimerRing } from "@/components/dashboard/timer-ring";
 import { WeekActivity } from "@/components/dashboard/week-activity";
 import { Badge } from "@/components/ui/badge";
@@ -102,6 +102,28 @@ const WINDOW_OPTIONS = [
 ] as const;
 
 const SAFETY_ACKNOWLEDGEMENT_KEY = "fasttrack:safety-acknowledged:v1";
+const SHARE_CARD_PREFERENCES_KEY = "fasttrack:share-card:v1";
+
+type ShareCardOptions = {
+  format: ShareCardFormat;
+  theme: ShareCardTheme;
+  showTimes: boolean;
+};
+
+const DEFAULT_SHARE_CARD_OPTIONS: ShareCardOptions = { format: "post", theme: "dusk", showTimes: true };
+
+function readShareCardOptions(): ShareCardOptions {
+  try {
+    const parsed = JSON.parse(safeStorageRead("localStorage", SHARE_CARD_PREFERENCES_KEY) ?? "null") as Partial<ShareCardOptions> | null;
+    return {
+      format: parsed?.format === "story" ? "story" : "post",
+      theme: parsed?.theme === "daybreak" ? "daybreak" : "dusk",
+      showTimes: parsed?.showTimes !== false,
+    };
+  } catch {
+    return DEFAULT_SHARE_CARD_OPTIONS;
+  }
+}
 
 const HOURLY_CHECK_INS = [
   "Choose a window that fits your day and begin when ready.",
@@ -468,6 +490,8 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   const [levelUpSummary, setLevelUpSummary] = useState<LevelUpSummary | null>(null);
   const [isMutatingFast, setIsMutatingFast] = useState(false);
   const [isSharingResult, setIsSharingResult] = useState(false);
+  const [shareOptions, setShareOptions] = useState<ShareCardOptions>(DEFAULT_SHARE_CARD_OPTIONS);
+  const [preparedShareImage, setPreparedShareImage] = useState<{ key: string; blob: Blob } | null>(null);
   const [startDialogMode, setStartDialogMode] = useState<StartDialogMode>(null);
   const [startTimeMode, setStartTimeMode] = useState<StartTimeMode>("now");
   const [startDateValue, setStartDateValue] = useState(() => getDateValue(new Date().toISOString()));
@@ -512,7 +536,46 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
 
   useEffect(() => {
     setSafetyAcknowledged(safeStorageRead("localStorage", SAFETY_ACKNOWLEDGEMENT_KEY) === "true");
+    setShareOptions(readShareCardOptions());
   }, []);
+
+  function updateShareOptions(next: Partial<ShareCardOptions>) {
+    setShareOptions((current) => {
+      const merged = { ...current, ...next };
+      safeStorageWrite("localStorage", SHARE_CARD_PREFERENCES_KEY, JSON.stringify(merged));
+      return merged;
+    });
+  }
+
+  const shareImageKey = completionSummary
+    ? [completionSummary.sessionId ?? completionSummary.endedAt, completionSummary.durationMinutes, completionSummary.currentStreak, completionSummary.totalFasts, shareOptions.format, shareOptions.theme, shareOptions.showTimes].join("|")
+    : null;
+
+  const renderShareImage = useCallback(async () => {
+    const node = shareCardRef.current;
+    if (!node) throw new Error("Share image is not ready yet.");
+    const { width, height } = SHARE_CARD_SIZES[shareOptions.format];
+    const { toBlob } = await import("html-to-image");
+    const blob = await toBlob(node, { pixelRatio: 1, canvasWidth: width, canvasHeight: height, width, height });
+    if (!blob) throw new Error("Share image generation failed.");
+    return blob;
+  }, [shareOptions.format]);
+
+  // Render ahead of the tap: iOS only allows navigator.share() shortly after a user gesture,
+  // so the image must already exist when Share is pressed.
+  useEffect(() => {
+    if (!shareImageKey) {
+      setPreparedShareImage(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      renderShareImage()
+        .then((blob) => { if (!cancelled) setPreparedShareImage({ key: shareImageKey, blob }); })
+        .catch(() => undefined);
+    }, 120);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [renderShareImage, shareImageKey]);
 
   useEffect(() => {
     if (signedIn) {
@@ -1263,59 +1326,69 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     }
   }
 
-  async function shareCompletion() {
-    if (!completionSummary || !shareCardRef.current) {
-      return;
-    }
+  async function getShareImage() {
+    if (preparedShareImage && preparedShareImage.key === shareImageKey) return preparedShareImage.blob;
+    return renderShareImage();
+  }
 
+  function getShareFilename() {
+    return `fasttrack-${completionSummary ? format(new Date(completionSummary.endedAt), "yyyy-MM-dd") : "fast"}.png`;
+  }
+
+  function downloadShareImage(blob: Blob) {
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = getShareFilename();
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+  }
+
+  async function shareCompletion() {
+    if (!completionSummary) return;
     setIsSharingResult(true);
 
     try {
-      const { toBlob } = await import("html-to-image");
-      const blob = await toBlob(shareCardRef.current, {
-        cacheBust: true,
-        pixelRatio: 1,
-        canvasWidth: 1080,
-        canvasHeight: 1350,
-        backgroundColor: "#0b0b0b",
-      });
-
-      if (!blob) {
-        throw new Error("Share image generation failed.");
-      }
-
-      const filename = `fasttrack-fast-${format(new Date(completionSummary.endedAt), "yyyy-MM-dd-HHmm")}.png`;
-      const file = new File([blob], filename, { type: "image/png" });
+      const blob = await getShareImage();
+      const file = new File([blob], getShareFilename(), { type: "image/png" });
       const shareData = {
         files: [file],
-        title: "FastTrack result",
-        text: `Fast completed • ${formatCompactDuration(completionSummary.durationMinutes)} • Tracked with FastTrack`,
+        text: `Just finished a ${formatCompactDuration(completionSummary.durationMinutes)} fast.`,
       };
 
-      if (
-        typeof navigator !== "undefined" &&
-        "share" in navigator &&
-        "canShare" in navigator &&
-        navigator.canShare(shareData)
-      ) {
+      if (typeof navigator.canShare === "function" && navigator.canShare(shareData)) {
         await navigator.share(shareData);
-        toast.success("Result shared.");
         return;
       }
 
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = blobUrl;
-      link.download = filename;
-      link.click();
-      URL.revokeObjectURL(blobUrl);
-      toast.success("Result downloaded as PNG.");
+      if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+        try {
+          await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+          toast.success("Image copied. Paste it into your chat.");
+          return;
+        } catch {
+          // Fall through to a download when clipboard image writes are blocked.
+        }
+      }
+
+      downloadShareImage(blob);
+      toast.success("Image saved. Attach it to your chat.");
     } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        return;
-      }
+      if (error instanceof Error && error.name === "AbortError") return;
+      toast.error(error instanceof Error ? error.message : "Unable to create the share image.");
+    } finally {
+      setIsSharingResult(false);
+    }
+  }
 
-      toast.error(error instanceof Error ? error.message : "Unable to generate the share image.");
+  async function saveCompletionImage() {
+    if (!completionSummary) return;
+    setIsSharingResult(true);
+    try {
+      downloadShareImage(await getShareImage());
+      toast.success("Image saved.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to create the share image.");
     } finally {
       setIsSharingResult(false);
     }
@@ -1844,86 +1917,103 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
 
       {completionSummary ? (
         <Dialog open onOpenChange={(open) => setCompletionSummary(open ? completionSummary : null)}>
-          <DialogContent className="animate-pop-in mx-2 max-h-[calc(100dvh-1rem)] max-w-[calc(100vw-1rem)] overflow-y-auto bg-[linear-gradient(180deg,#1a1a1a_0%,#0d0d0d_100%)] sm:mx-auto sm:max-w-lg">
+          <DialogContent className="animate-pop-in mx-2 max-h-[calc(100dvh-1rem)] max-w-[calc(100vw-1rem)] overflow-y-auto sm:mx-auto sm:max-w-md">
             <DialogHeader>
-              <DialogTitle className="text-center text-xs uppercase tracking-[0.36em] text-muted-foreground">
-                Fast Complete
-              </DialogTitle>
-              <DialogDescription>Your latest result is saved and ready to share.</DialogDescription>
+              <DialogTitle>Fast complete</DialogTitle>
+              <DialogDescription>
+                {formatCompactDuration(completionSummary.durationMinutes)} saved. Share it with your friends or group chat.
+              </DialogDescription>
             </DialogHeader>
-            <div className="space-y-5">
-              <div className="flex flex-col items-center text-center">
-                <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-gradient-to-br from-primary/90 to-[#b46cff] shadow-[0_16px_34px_rgba(139,92,246,0.3)]">
-                  <span className="text-3xl">{completionSummary.stage.emoji}</span>
-                </div>
-                <p className="font-[family:var(--font-heading)] text-4xl font-bold text-foreground">
-                  {formatDuration(completionSummary.durationMinutes)}
-                </p>
-                <p className="mt-2 text-base text-muted-foreground">
-                  Completed session
-                </p>
+            <div className="space-y-4">
+              <div className={cn("mx-auto w-full", shareOptions.format === "story" ? "max-w-[15rem]" : "max-w-[20rem]")}>
+                <ShareFastCardPreview
+                  currentStreak={completionSummary.currentStreak}
+                  durationMinutes={completionSummary.durationMinutes}
+                  endedAt={completionSummary.endedAt}
+                  format={shareOptions.format}
+                  plannedMinutes={completionSummary.plannedMinutes}
+                  showTimes={shareOptions.showTimes}
+                  startedAt={completionSummary.startedAt}
+                  theme={shareOptions.theme}
+                  totalFasts={completionSummary.totalFasts}
+                />
               </div>
-              <div className="glass-soft grid gap-3 rounded-[1.5rem] px-4 py-4 sm:grid-cols-2">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Started</p>
-                  <p className="mt-2 text-base font-medium text-foreground">{formatTime(completionSummary.startedAt)}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Ended</p>
-                  <p className="mt-2 text-base font-medium text-foreground">{formatTime(completionSummary.endedAt)}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Planned window</p>
-                  <p className="mt-2 text-base font-medium text-foreground">
-                    {formatDuration(completionSummary.plannedMinutes)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Checkpoint</p>
-                  <p className="mt-2 text-base font-medium text-foreground">{completionSummary.stage.label}</p>
-                </div>
-              </div>
-              <div className="glass-soft grid gap-4 rounded-[1.5rem] px-4 py-4 sm:grid-cols-2">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">XP gained</p>
-                  <p className="mt-2 font-[family:var(--font-heading)] text-3xl font-bold text-foreground">
-                    +{completionSummary.xpGained}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Current streak</p>
-                  <p className="mt-2 font-[family:var(--font-heading)] text-3xl font-bold text-foreground">
-                    {completionSummary.currentStreak ?? "Updating"}
-                  </p>
-                </div>
-              </div>
-              <div className="glass-soft rounded-[1.5rem] px-4 py-4">
-                <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Total fasts</p>
-                <p className="mt-2 font-[family:var(--font-heading)] text-3xl font-bold text-foreground">
-                  {completionSummary.totalFasts ?? "Updating"}
-                </p>
-              </div>
-              {completionSummary.badges.length ? (
-                <div className="glass-soft rounded-[1.5rem] px-4 py-4">
-                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Badges earned</p>
-                  <div className="mt-3 space-y-2">
-                    {completionSummary.badges.map((badge) => (
-                      <div key={badge.id} className="flex items-center justify-between rounded-[1.1rem] bg-white/[0.05] px-3 py-3">
-                        <p className="text-sm font-medium text-foreground">
-                          {badge.icon} {badge.name}
-                        </p>
-                        <Badge className="bg-primary/15 text-primary-readable hover:bg-primary/20">Earned</Badge>
-                      </div>
-                    ))}
+
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { label: "Format", options: [{ value: "post", label: "Post" }, { value: "story", label: "Story" }], key: "format" },
+                  { label: "Look", options: [{ value: "dusk", label: "Dusk" }, { value: "daybreak", label: "Daybreak" }], key: "theme" },
+                ] as const).map((group) => (
+                  <div key={group.key} role="group" aria-label={group.label} className="grid grid-cols-2 rounded-xl border border-white/[0.08] bg-white/[0.03] p-1">
+                    {group.options.map((option) => {
+                      const active = shareOptions[group.key] === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          aria-pressed={active}
+                          className={cn(
+                            "min-h-10 rounded-lg px-2 text-sm font-medium transition-colors",
+                            active ? "bg-white/[0.12] text-foreground" : "text-muted-foreground hover:text-foreground"
+                          )}
+                          onClick={() => updateShareOptions({ [group.key]: option.value } as Partial<ShareCardOptions>)}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
                   </div>
+                ))}
+              </div>
+
+              <label className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 text-sm text-foreground">
+                Show start and end times
+                <input
+                  checked={shareOptions.showTimes}
+                  className="size-5 accent-[hsl(var(--primary))]"
+                  onChange={(event) => updateShareOptions({ showTimes: event.target.checked })}
+                  type="checkbox"
+                />
+              </label>
+
+              <dl className="grid grid-cols-3 divide-x divide-white/[0.08] rounded-xl border border-white/[0.08] bg-white/[0.03] py-3 text-center">
+                {[
+                  { label: "XP gained", value: signedIn ? `+${completionSummary.xpGained}` : "—" },
+                  { label: "Streak", value: completionSummary.currentStreak ?? "…" },
+                  { label: "Total fasts", value: completionSummary.totalFasts ?? "…" },
+                ].map((item) => (
+                  <div key={item.label} className="px-2">
+                    <dt className="text-xs text-muted-foreground">{item.label}</dt>
+                    <dd className="timer-numerals mt-1 text-lg font-semibold text-foreground">{item.value}</dd>
+                  </div>
+                ))}
+              </dl>
+
+              {completionSummary.badges.length ? (
+                <div className="rounded-xl border border-primary/25 bg-primary/10 px-3 py-3">
+                  <p className="text-xs text-muted-foreground">Badges earned</p>
+                  <ul className="mt-2 flex flex-wrap gap-2">
+                    {completionSummary.badges.map((badge) => (
+                      <li key={badge.id} className="rounded-full bg-white/[0.06] px-3 py-1 text-sm font-medium text-foreground">
+                        {badge.icon} {badge.name}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               ) : null}
-              <DialogFooter>
-                <Button disabled={isSharingResult} onClick={() => void shareCompletion()} variant="secondary">
-                  <Share2 className="mr-2 size-4" />
-                  {isSharingResult ? "Preparing image..." : "Share result"}
+
+              <DialogFooter className="gap-2 sm:gap-2">
+                <Button disabled={isSharingResult} onClick={() => setCompletionSummary(null)} variant="ghost">
+                  Done
                 </Button>
-                <Button onClick={() => setCompletionSummary(null)}>Done</Button>
+                <Button disabled={isSharingResult} onClick={() => void saveCompletionImage()} variant="outline">
+                  <Download aria-hidden="true" className="mr-2 size-4" />
+                  Save image
+                </Button>
+                <Button disabled={isSharingResult} aria-busy={isSharingResult} onClick={() => void shareCompletion()}>
+                  {isSharingResult ? <LoaderCircle aria-hidden="true" className="mr-2 size-4 animate-spin" /> : <Share2 aria-hidden="true" className="mr-2 size-4" />}
+                  Share
+                </Button>
               </DialogFooter>
             </div>
           </DialogContent>
@@ -1931,17 +2021,18 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
       ) : null}
 
       {completionSummary ? (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none fixed -left-[200vw] top-0 z-[-1]"
-        >
+        <div aria-hidden="true" className="pointer-events-none fixed left-[-10000px] top-0">
           <ShareFastCard
             ref={shareCardRef}
+            currentStreak={completionSummary.currentStreak}
             durationMinutes={completionSummary.durationMinutes}
             endedAt={completionSummary.endedAt}
-            milestoneLabel={completionSummary.stage.label}
+            format={shareOptions.format}
             plannedMinutes={completionSummary.plannedMinutes}
+            showTimes={shareOptions.showTimes}
             startedAt={completionSummary.startedAt}
+            theme={shareOptions.theme}
+            totalFasts={completionSummary.totalFasts}
           />
         </div>
       ) : null}

@@ -1,6 +1,7 @@
+import { checkRateLimit } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 
-import { getErrorMessage, jsonMessage } from "@/lib/api-responses";
+import { getErrorMessage, jsonMessage, rateLimitedResponse } from "@/lib/api-responses";
 import { getCurrentUserId, searchProfiles } from "@/lib/fasting-data";
 
 export async function GET(request: Request) {
@@ -8,6 +9,11 @@ export async function GET(request: Request) {
 
   if (!userId) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const rateLimit = checkRateLimit(`friends:search:${userId}`, 30, 60_000);
+  if (!rateLimit.allowed) {
+    return rateLimitedResponse(rateLimit.retryAfterSeconds, "Too many searches. Try again shortly.");
   }
 
   const { searchParams } = new URL(request.url);
