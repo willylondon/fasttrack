@@ -1,3 +1,5 @@
+import { checkRateLimit } from "@/lib/rate-limit";
+import { rateLimitedResponse } from "@/lib/api-responses";
 import { NextResponse } from "next/server";
 
 import { getCurrentUserId, joinChallenge, leaveChallenge } from "@/lib/fasting-data";
@@ -11,6 +13,11 @@ export async function POST(
 
   if (!userId) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const rateLimit = checkRateLimit(`challenges:join:${userId}`, 20, 60_000);
+  if (!rateLimit.allowed) {
+    return rateLimitedResponse(rateLimit.retryAfterSeconds);
   }
 
   try {
@@ -32,6 +39,11 @@ export async function DELETE(
 
   if (!userId) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const rateLimit = checkRateLimit(`challenges:join:${userId}`, 20, 60_000);
+  if (!rateLimit.allowed) {
+    return rateLimitedResponse(rateLimit.retryAfterSeconds);
   }
 
   try {

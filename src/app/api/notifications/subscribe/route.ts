@@ -1,7 +1,8 @@
+import { checkRateLimit } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { getZodMessage, jsonMessage, readJsonBody } from "@/lib/api-responses";
+import { getZodMessage, jsonMessage, readJsonBody, rateLimitedResponse } from "@/lib/api-responses";
 import { getCurrentUserId } from "@/lib/fasting-data";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -22,6 +23,11 @@ export async function POST(request: Request) {
 
   if (!userId) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const rateLimit = checkRateLimit(`notifications:subscribe:${userId}`, 10, 60_000);
+  if (!rateLimit.allowed) {
+    return rateLimitedResponse(rateLimit.retryAfterSeconds);
   }
 
   const body = await readJsonBody(request);

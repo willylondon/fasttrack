@@ -1,7 +1,8 @@
+import { checkRateLimit } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { getErrorMessage, getErrorStatus, getZodMessage, jsonMessage, readJsonBody } from "@/lib/api-responses";
+import { getErrorMessage, getErrorStatus, getZodMessage, jsonMessage, readJsonBody, rateLimitedResponse } from "@/lib/api-responses";
 import { createEncouragementComment, getCurrentUserId, getEncouragementComments } from "@/lib/fasting-data";
 
 const encouragementSchema = z.object({
@@ -40,6 +41,11 @@ export async function POST(request: Request) {
 
   if (!userId) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const rateLimit = checkRateLimit(`encouragements:send:${userId}`, 20, 10 * 60_000);
+  if (!rateLimit.allowed) {
+    return rateLimitedResponse(rateLimit.retryAfterSeconds, "Too many encouragements. Try again later.");
   }
 
   const body = await readJsonBody(request);
