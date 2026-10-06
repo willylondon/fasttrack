@@ -4,9 +4,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { format, subDays } from "date-fns";
+import { Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { SignInDialog } from "@/components/auth/sign-in-dialog";
+import { ShareFastPanel, type ShareableFast } from "@/components/dashboard/share-fast-panel";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -160,6 +163,7 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
   const [editingEndSessionId, setEditingEndSessionId] = useState<string | null>(null);
   const [savingEndSessionId, setSavingEndSessionId] = useState<string | null>(null);
   const [endTimeDrafts, setEndTimeDrafts] = useState<Record<string, EndTimeDraft>>({});
+  const [sharingFast, setSharingFast] = useState<ShareableFast | null>(null);
 
   useEffect(() => {
     if (!signedIn) {
@@ -174,7 +178,9 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
 
   const stats = calculateStats(history.sessions, history.profile);
   const chartData = buildHistorySeries(history.sessions);
-  const completedSessions = history.sessions.filter((session) => session.status === "completed");
+  const completedSessions = history.sessions
+    .filter((session) => session.status === "completed")
+    .sort((a, b) => Date.parse(b.endedAt ?? b.startedAt) - Date.parse(a.endedAt ?? a.startedAt));
   const checkInMap = new Map(history.checkIns.map((checkIn) => [checkIn.sessionId, checkIn]));
   const checkInInsights = history.checkInInsights.length
     ? history.checkInInsights
@@ -193,6 +199,16 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
         100
     )
   );
+
+  // History is capped and ordered by creation time, so count by end time and anchor to the
+  // account total when it is known: total minus the fasts that ended after this one.
+  function countFastsThrough(session: FastSession) {
+    const endedAt = Date.parse(session.endedAt ?? "");
+    const endedLater = completedSessions.filter((other) => Date.parse(other.endedAt ?? "") > endedAt).length;
+    return history.profile?.totalFasts
+      ? Math.max(1, history.profile.totalFasts - endedLater)
+      : completedSessions.length - endedLater;
+  }
 
   function updateCheckInDraft(sessionId: string, patch: Partial<CheckInDraft>) {
     setCheckInDrafts((current) => ({
@@ -629,6 +645,27 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
                     <span className="font-[family:var(--font-heading)] text-lg font-semibold">
                       {formatCompactDuration(session.durationMinutes ?? 0)}
                     </span>
+                    {session.endedAt && (session.durationMinutes ?? 0) > 0 ? (
+                      <Button
+                        aria-label={`Share ${formatCompactDuration(session.durationMinutes ?? 0)} fast from ${format(new Date(session.endedAt), "MMM d")}`}
+                        className="rounded-2xl"
+                        onClick={() =>
+                          setSharingFast({
+                            id: session.id,
+                            durationMinutes: session.durationMinutes ?? 0,
+                            startedAt: session.startedAt,
+                            endedAt: session.endedAt!,
+                            plannedMinutes: session.plannedMinutes,
+                            totalFasts: countFastsThrough(session),
+                          })
+                        }
+                        size="sm"
+                        variant="outline"
+                      >
+                        <Share2 aria-hidden="true" className="mr-1.5 size-4" />
+                        Share
+                      </Button>
+                    ) : null}
                     {signedIn && session.endedAt ? (
                       <Button
                         className="rounded-2xl"
@@ -650,6 +687,20 @@ export function HistoryView({ initialData, providers, signedIn }: HistoryViewPro
           )}
         </CardContent>
       </Card>
+
+      {sharingFast ? (
+        <Dialog open onOpenChange={(open) => { if (!open) setSharingFast(null); }}>
+          <DialogContent className="mx-2 max-h-[calc(100dvh-1rem)] max-w-[calc(100vw-1rem)] overflow-y-auto sm:mx-auto sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Share this fast</DialogTitle>
+              <DialogDescription>
+                {formatCompactDuration(sharingFast.durationMinutes)} on {format(new Date(sharingFast.endedAt), "EEEE, MMM d")}.
+              </DialogDescription>
+            </DialogHeader>
+            <ShareFastPanel fast={sharingFast} onDone={() => setSharingFast(null)} />
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </div>
   );
 }

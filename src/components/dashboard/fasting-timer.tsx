@@ -2,11 +2,11 @@
 
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
-import { Check, ChevronDown, Clock3, Download, Flag, LoaderCircle, PencilLine, Share2, ShieldAlert, X } from "lucide-react";
+import { Check, ChevronDown, Clock3, Flag, LoaderCircle, PencilLine, ShieldAlert, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { FastingMilestoneBar } from "@/components/dashboard/fasting-milestone-bar";
-import { SHARE_CARD_SIZES, ShareFastCard, ShareFastCardPreview, type ShareCardFormat, type ShareCardTheme } from "@/components/dashboard/share-fast-card";
+import { ShareFastPanel } from "@/components/dashboard/share-fast-panel";
 import { TimerRing } from "@/components/dashboard/timer-ring";
 import { WeekActivity } from "@/components/dashboard/week-activity";
 import { Badge } from "@/components/ui/badge";
@@ -102,29 +102,6 @@ const WINDOW_OPTIONS = [
 ] as const;
 
 const SAFETY_ACKNOWLEDGEMENT_KEY = "fasttrack:safety-acknowledged:v1";
-const SHARE_CARD_PREFERENCES_KEY = "fasttrack:share-card:v1";
-
-type ShareCardOptions = {
-  format: ShareCardFormat;
-  theme: ShareCardTheme;
-  showTimes: boolean;
-};
-
-const DEFAULT_SHARE_CARD_OPTIONS: ShareCardOptions = { format: "post", theme: "dusk", showTimes: true };
-
-function readShareCardOptions(): ShareCardOptions {
-  try {
-    const parsed = JSON.parse(safeStorageRead("localStorage", SHARE_CARD_PREFERENCES_KEY) ?? "null") as Partial<ShareCardOptions> | null;
-    return {
-      format: parsed?.format === "story" ? "story" : "post",
-      theme: parsed?.theme === "daybreak" ? "daybreak" : "dusk",
-      showTimes: parsed?.showTimes !== false,
-    };
-  } catch {
-    return DEFAULT_SHARE_CARD_OPTIONS;
-  }
-}
-
 const HOURLY_CHECK_INS = [
   "Choose a window that fits your day and begin when ready.",
   "Use the first hour to settle in. A calm start makes the routine easier to repeat.",
@@ -489,9 +466,6 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null);
   const [levelUpSummary, setLevelUpSummary] = useState<LevelUpSummary | null>(null);
   const [isMutatingFast, setIsMutatingFast] = useState(false);
-  const [isSharingResult, setIsSharingResult] = useState(false);
-  const [shareOptions, setShareOptions] = useState<ShareCardOptions>(DEFAULT_SHARE_CARD_OPTIONS);
-  const [preparedShareImage, setPreparedShareImage] = useState<{ key: string; blob: Blob } | null>(null);
   const [startDialogMode, setStartDialogMode] = useState<StartDialogMode>(null);
   const [startTimeMode, setStartTimeMode] = useState<StartTimeMode>("now");
   const [startDateValue, setStartDateValue] = useState(() => getDateValue(new Date().toISOString()));
@@ -519,7 +493,6 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
   const startOperationRef = useRef<string | null>(null);
   const milestoneInFlightRef = useRef(false);
   const lastDashboardRefreshRef = useRef(0);
-  const shareCardRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     accountRef.current = userId;
@@ -536,46 +509,7 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
 
   useEffect(() => {
     setSafetyAcknowledged(safeStorageRead("localStorage", SAFETY_ACKNOWLEDGEMENT_KEY) === "true");
-    setShareOptions(readShareCardOptions());
   }, []);
-
-  function updateShareOptions(next: Partial<ShareCardOptions>) {
-    setShareOptions((current) => {
-      const merged = { ...current, ...next };
-      safeStorageWrite("localStorage", SHARE_CARD_PREFERENCES_KEY, JSON.stringify(merged));
-      return merged;
-    });
-  }
-
-  const shareImageKey = completionSummary
-    ? [completionSummary.sessionId ?? completionSummary.endedAt, completionSummary.durationMinutes, completionSummary.currentStreak, completionSummary.totalFasts, shareOptions.format, shareOptions.theme, shareOptions.showTimes].join("|")
-    : null;
-
-  const renderShareImage = useCallback(async () => {
-    const node = shareCardRef.current;
-    if (!node) throw new Error("Share image is not ready yet.");
-    const { width, height } = SHARE_CARD_SIZES[shareOptions.format];
-    const { toBlob } = await import("html-to-image");
-    const blob = await toBlob(node, { pixelRatio: 1, canvasWidth: width, canvasHeight: height, width, height });
-    if (!blob) throw new Error("Share image generation failed.");
-    return blob;
-  }, [shareOptions.format]);
-
-  // Render ahead of the tap: iOS only allows navigator.share() shortly after a user gesture,
-  // so the image must already exist when Share is pressed.
-  useEffect(() => {
-    if (!shareImageKey) {
-      setPreparedShareImage(null);
-      return;
-    }
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      renderShareImage()
-        .then((blob) => { if (!cancelled) setPreparedShareImage({ key: shareImageKey, blob }); })
-        .catch(() => undefined);
-    }, 120);
-    return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [renderShareImage, shareImageKey]);
 
   useEffect(() => {
     if (signedIn) {
@@ -1326,74 +1260,6 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
     }
   }
 
-  async function getShareImage() {
-    if (preparedShareImage && preparedShareImage.key === shareImageKey) return preparedShareImage.blob;
-    return renderShareImage();
-  }
-
-  function getShareFilename() {
-    return `fasttrack-${completionSummary ? format(new Date(completionSummary.endedAt), "yyyy-MM-dd") : "fast"}.png`;
-  }
-
-  function downloadShareImage(blob: Blob) {
-    const blobUrl = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = blobUrl;
-    link.download = getShareFilename();
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-  }
-
-  async function shareCompletion() {
-    if (!completionSummary) return;
-    setIsSharingResult(true);
-
-    try {
-      const blob = await getShareImage();
-      const file = new File([blob], getShareFilename(), { type: "image/png" });
-      const shareData = {
-        files: [file],
-        text: `Just finished a ${formatCompactDuration(completionSummary.durationMinutes)} fast.`,
-      };
-
-      if (typeof navigator.canShare === "function" && navigator.canShare(shareData)) {
-        await navigator.share(shareData);
-        return;
-      }
-
-      if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
-        try {
-          await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-          toast.success("Image copied. Paste it into your chat.");
-          return;
-        } catch {
-          // Fall through to a download when clipboard image writes are blocked.
-        }
-      }
-
-      downloadShareImage(blob);
-      toast.success("Image saved. Attach it to your chat.");
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") return;
-      toast.error(error instanceof Error ? error.message : "Unable to create the share image.");
-    } finally {
-      setIsSharingResult(false);
-    }
-  }
-
-  async function saveCompletionImage() {
-    if (!completionSummary) return;
-    setIsSharingResult(true);
-    try {
-      downloadShareImage(await getShareImage());
-      toast.success("Image saved.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to create the share image.");
-    } finally {
-      setIsSharingResult(false);
-    }
-  }
-
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <p className="sr-only" role="status">{isMutatingFast ? "Saving your fast. Please wait." : ""}</p>
@@ -1924,58 +1790,18 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                 {formatCompactDuration(completionSummary.durationMinutes)} saved. Share it with your friends or group chat.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4">
-              <div className={cn("mx-auto w-full", shareOptions.format === "story" ? "max-w-[15rem]" : "max-w-[20rem]")}>
-                <ShareFastCardPreview
-                  currentStreak={completionSummary.currentStreak}
-                  durationMinutes={completionSummary.durationMinutes}
-                  endedAt={completionSummary.endedAt}
-                  format={shareOptions.format}
-                  plannedMinutes={completionSummary.plannedMinutes}
-                  showTimes={shareOptions.showTimes}
-                  startedAt={completionSummary.startedAt}
-                  theme={shareOptions.theme}
-                  totalFasts={completionSummary.totalFasts}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                {([
-                  { label: "Format", options: [{ value: "post", label: "Post" }, { value: "story", label: "Story" }], key: "format" },
-                  { label: "Look", options: [{ value: "dusk", label: "Dusk" }, { value: "daybreak", label: "Daybreak" }], key: "theme" },
-                ] as const).map((group) => (
-                  <div key={group.key} role="group" aria-label={group.label} className="grid grid-cols-2 rounded-xl border border-white/[0.08] bg-white/[0.03] p-1">
-                    {group.options.map((option) => {
-                      const active = shareOptions[group.key] === option.value;
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          aria-pressed={active}
-                          className={cn(
-                            "min-h-10 rounded-lg px-2 text-sm font-medium transition-colors",
-                            active ? "bg-white/[0.12] text-foreground" : "text-muted-foreground hover:text-foreground"
-                          )}
-                          onClick={() => updateShareOptions({ [group.key]: option.value } as Partial<ShareCardOptions>)}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-
-              <label className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 text-sm text-foreground">
-                Show start and end times
-                <input
-                  checked={shareOptions.showTimes}
-                  className="size-5 accent-[hsl(var(--primary))]"
-                  onChange={(event) => updateShareOptions({ showTimes: event.target.checked })}
-                  type="checkbox"
-                />
-              </label>
-
+            <ShareFastPanel
+              fast={{
+                id: completionSummary.sessionId ?? completionSummary.endedAt,
+                durationMinutes: completionSummary.durationMinutes,
+                startedAt: completionSummary.startedAt,
+                endedAt: completionSummary.endedAt,
+                plannedMinutes: completionSummary.plannedMinutes,
+                currentStreak: completionSummary.currentStreak,
+                totalFasts: completionSummary.totalFasts,
+              }}
+              onDone={() => setCompletionSummary(null)}
+            >
               <dl className="grid grid-cols-3 divide-x divide-white/[0.08] rounded-xl border border-white/[0.08] bg-white/[0.03] py-3 text-center">
                 {[
                   { label: "XP gained", value: signedIn ? `+${completionSummary.xpGained}` : "—" },
@@ -2001,40 +1827,9 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
                   </ul>
                 </div>
               ) : null}
-
-              <DialogFooter className="gap-2 sm:gap-2">
-                <Button disabled={isSharingResult} onClick={() => setCompletionSummary(null)} variant="ghost">
-                  Done
-                </Button>
-                <Button disabled={isSharingResult} onClick={() => void saveCompletionImage()} variant="outline">
-                  <Download aria-hidden="true" className="mr-2 size-4" />
-                  Save image
-                </Button>
-                <Button disabled={isSharingResult} aria-busy={isSharingResult} onClick={() => void shareCompletion()}>
-                  {isSharingResult ? <LoaderCircle aria-hidden="true" className="mr-2 size-4 animate-spin" /> : <Share2 aria-hidden="true" className="mr-2 size-4" />}
-                  Share
-                </Button>
-              </DialogFooter>
-            </div>
+            </ShareFastPanel>
           </DialogContent>
         </Dialog>
-      ) : null}
-
-      {completionSummary ? (
-        <div aria-hidden="true" className="pointer-events-none fixed left-[-10000px] top-0">
-          <ShareFastCard
-            ref={shareCardRef}
-            currentStreak={completionSummary.currentStreak}
-            durationMinutes={completionSummary.durationMinutes}
-            endedAt={completionSummary.endedAt}
-            format={shareOptions.format}
-            plannedMinutes={completionSummary.plannedMinutes}
-            showTimes={shareOptions.showTimes}
-            startedAt={completionSummary.startedAt}
-            theme={shareOptions.theme}
-            totalFasts={completionSummary.totalFasts}
-          />
-        </div>
       ) : null}
 
       {levelUpSummary ? (
