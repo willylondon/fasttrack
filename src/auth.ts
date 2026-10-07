@@ -13,6 +13,9 @@ if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
     Google({
       clientId: process.env.AUTH_GOOGLE_ID,
       clientSecret: process.env.AUTH_GOOGLE_SECRET,
+      // Always show Google's account chooser so people with several Google
+      // accounts can pick one instead of being signed in silently.
+      authorization: { params: { prompt: "select_account" } },
     })
   );
 }
