@@ -55,6 +55,26 @@ for (const actor of ["sender", "receiver"]) {
   });
 }
 
+test("name search hides yourself and existing connections", async () => {
+  const pending = { sender_id: "self", receiver_id: "pending", status: "pending" };
+  const calls = database([[pending], [
+    { id: "self", display_name: "Farika Self", avatar_url: null, current_streak: 0 },
+    { id: "pending", display_name: "Farika Pending", avatar_url: null, current_streak: 0 },
+    { id: "farika", display_name: "Farika", avatar_url: null, current_streak: 2 },
+  ]]);
+  const results = await searchProfiles("self", "farika");
+  assert.deepEqual(results.map((row) => row.id), ["farika"]);
+  assert.equal(calls.length, 2);
+});
+
+test("email search looks up the exact address in the next_auth schema", async () => {
+  const calls = database([[], [{ id: "farika" }], [{ id: "farika", display_name: "F", avatar_url: null, current_streak: 0 }]]);
+  const results = await searchProfiles("self", "  Farika@Example.com ");
+  assert.deepEqual(results.map((row) => row.id), ["farika"]);
+  assert.equal(calls[1].url.pathname, "/rest/v1/users");
+  assert.equal(calls[1].url.searchParams.get("email"), "ilike.Farika@Example.com");
+});
+
 
 test("removal scopes deletion to accepted relationships between exactly these two members", async () => {
   const calls = database([null]);
