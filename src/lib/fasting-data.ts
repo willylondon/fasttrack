@@ -1054,6 +1054,7 @@ export async function removeFriendConnection(userId: string, targetUserId: strin
 
 export async function searchProfiles(userId: string, query: string) {
   const normalizedQuery = query.trim();
+  const escapedQuery = normalizedQuery.replace(/[\\%_]/g, "\\$&");
 
   if (!normalizedQuery) {
     return [] as FriendSearchResult[];
@@ -1077,31 +1078,64 @@ export async function searchProfiles(userId: string, query: string) {
     blockedIds.add(friendship.receiver_id);
   }
 
-  const candidateUsers = await supabase
+  // Search profiles by display_name
+  const nameResults = await supabase
     .from("profiles")
     .select("id,display_name,avatar_url,current_streak")
-    .ilike("display_name", `%${normalizedQuery.replace(/[\\%_]/g, "\\$&")}%`)
+    .ilike("display_name", `%${escapedQuery}%`)
     .limit(12 + blockedIds.size);
 
-  if (candidateUsers.error) {
-    throw candidateUsers.error;
+  if (nameResults.error) {
+    throw nameResults.error;
   }
 
-  const filteredIds = (candidateUsers.data ?? [])
-    .map((user) => user.id)
-    .filter((id) => !blockedIds.has(id));
+  // Also search next_auth.users by email — finds people when you type their email
+  const emailResults = await supabase
+    .from("next_auth.users")
+    .select("id")
+    .ilike("email", `%${escapedQuery}%`)
+    .limit(12 + blockedIds.size);
 
-  if (!filteredIds.length) {
+  if (emailResults.error) {
+    throw emailResults.error;
+  }
+
+  // Collect unique candidate IDs from both searches, excluding blocked users
+  const candidateIdSet = new Set<string>();
+
+  for (const profile of nameResults.data ?? []) {
+    candidateIdSet.add(profile.id);
+  }
+  for (const entry of emailResults.data ?? []) {
+    if (!blockedIds.has(entry.id)) {
+      candidateIdSet.add(entry.id);
+    }
+  }
+
+  // If no candidates, bail early
+  if (candidateIdSet.size === 0) {
     return [];
   }
 
-  return (candidateUsers.data ?? [])
-    .filter((user) => filteredIds.includes(user.id))
-    .map((user) => ({
-      id: user.id,
-      displayName: user.display_name ?? "FastTrack member",
-      avatarUrl: user.avatar_url ?? null,
-      currentStreak: user.current_streak ?? 0,
+  // Fetch profiles for ALL candidate IDs in one batch query
+  const candidateIds = Array.from(candidateIdSet);
+  const profileResults = await supabase
+    .from("profiles")
+    .select("id,display_name,avatar_url,current_streak")
+    .in("id", candidateIds)
+    .limit(candidateIds.length);
+
+  if (profileResults.error) {
+    throw profileResults.error;
+  }
+
+  return (profileResults.data ?? [])
+    .filter((entry) => candidateIdSet.has(entry.id))
+    .map((entry) => ({
+      id: entry.id,
+      displayName: entry.display_name ?? "FastTrack member",
+      avatarUrl: entry.avatar_url ?? null,
+      currentStreak: entry.current_streak ?? 0,
     }) satisfies FriendSearchResult);
 }
 
