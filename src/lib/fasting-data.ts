@@ -1078,64 +1078,47 @@ export async function searchProfiles(userId: string, query: string) {
     blockedIds.add(friendship.receiver_id);
   }
 
-  // Search profiles by display_name
-  const nameResults = await supabase
-    .from("profiles")
-    .select("id,display_name,avatar_url,current_streak")
-    .ilike("display_name", `%${escapedQuery}%`)
-    .limit(12 + blockedIds.size);
+  // An email address only matches its exact owner (case-insensitive), so
+  // partial addresses can't be used to enumerate members.
+  let profileQuery = supabase.from("profiles").select("id,display_name,avatar_url,current_streak");
 
-  if (nameResults.error) {
-    throw nameResults.error;
-  }
+  if (normalizedQuery.includes("@")) {
+    const emailResult = await supabase
+      .schema("next_auth")
+      .from("users")
+      .select("id")
+      .ilike("email", escapedQuery)
+      .limit(1);
 
-  // Also search next_auth.users by email — finds people when you type their email
-  const emailResults = await supabase
-    .from("next_auth.users")
-    .select("id")
-    .ilike("email", `%${escapedQuery}%`)
-    .limit(12 + blockedIds.size);
-
-  if (emailResults.error) {
-    throw emailResults.error;
-  }
-
-  // Collect unique candidate IDs from both searches, excluding blocked users
-  const candidateIdSet = new Set<string>();
-
-  for (const profile of nameResults.data ?? []) {
-    candidateIdSet.add(profile.id);
-  }
-  for (const entry of emailResults.data ?? []) {
-    if (!blockedIds.has(entry.id)) {
-      candidateIdSet.add(entry.id);
+    if (emailResult.error) {
+      throw emailResult.error;
     }
+
+    const matchedIds = (emailResult.data ?? []).map((entry) => entry.id).filter((id) => !blockedIds.has(id));
+
+    if (!matchedIds.length) {
+      return [] as FriendSearchResult[];
+    }
+
+    profileQuery = profileQuery.in("id", matchedIds);
+  } else {
+    profileQuery = profileQuery.ilike("display_name", `%${escapedQuery}%`).limit(12 + blockedIds.size);
   }
 
-  // If no candidates, bail early
-  if (candidateIdSet.size === 0) {
-    return [];
+  const candidateUsers = await profileQuery;
+
+  if (candidateUsers.error) {
+    throw candidateUsers.error;
   }
 
-  // Fetch profiles for ALL candidate IDs in one batch query
-  const candidateIds = Array.from(candidateIdSet);
-  const profileResults = await supabase
-    .from("profiles")
-    .select("id,display_name,avatar_url,current_streak")
-    .in("id", candidateIds)
-    .limit(candidateIds.length);
-
-  if (profileResults.error) {
-    throw profileResults.error;
-  }
-
-  return (profileResults.data ?? [])
-    .filter((entry) => candidateIdSet.has(entry.id))
-    .map((entry) => ({
-      id: entry.id,
-      displayName: entry.display_name ?? "FastTrack member",
-      avatarUrl: entry.avatar_url ?? null,
-      currentStreak: entry.current_streak ?? 0,
+  return (candidateUsers.data ?? [])
+    .filter((user) => !blockedIds.has(user.id))
+    .slice(0, 12)
+    .map((user) => ({
+      id: user.id,
+      displayName: user.display_name ?? "FastTrack member",
+      avatarUrl: user.avatar_url ?? null,
+      currentStreak: user.current_streak ?? 0,
     }) satisfies FriendSearchResult);
 }
 
