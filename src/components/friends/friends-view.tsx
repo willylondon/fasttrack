@@ -76,7 +76,6 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
   const [searchFeedback, setSearchFeedback] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
-  const friendsById = new Map(friendsData.friends.map((friend) => [friend.id, friend]));
 
   useEffect(() => {
     setFriendsData(initialData);
@@ -299,7 +298,7 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
             </div>
             <div>
               <CardTitle>Find Friends</CardTitle>
-              <CardDescription>Search by name or their exact sign-in email. Connecting shares completed progress with each other; live status is a separate opt-in.</CardDescription>
+              <CardDescription>Search by name or their exact sign-in email. Connecting shares your fasts with each other, including live ones unless you hide them in Profile.</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -373,7 +372,7 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
               </div>
               <div>
                 <CardTitle>Pending requests</CardTitle>
-                <CardDescription>Accepting shares your completed progress and streaks with this person. Live status stays a separate opt-in.</CardDescription>
+                <CardDescription>Accepting shares your fasts and streaks with this person, including live fasts unless you hide them in Profile.</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -475,86 +474,23 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {friendsData.liveSessions.length ? (
-            <section className="space-y-3">
-              <h2 className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Fasting now</h2>
-              {[...friendsData.liveSessions].sort((a, b) => (a.displayName ?? "").localeCompare(b.displayName ?? "")).map((session) => {
-                const elapsedMinutes = getElapsedMinutes({ startedAt: session.startedAt }, now);
-                const stage = getStageForMinutes(elapsedMinutes);
-                const friend = friendsById.get(session.userId);
-
-                return (
-                  <div
-                    key={session.userId}
-                    className={cn(
-                      "glass-soft flex flex-col gap-4 rounded-[1.5rem] px-4 py-4 sm:flex-row sm:items-center sm:justify-between",
-                      session.isCurrentUser ? "border border-primary/25 shadow-[0_16px_40px_rgba(124,92,255,0.12)]" : ""
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Avatar size="sm">
-                        <AvatarImage src={session.avatarUrl ?? undefined} alt={session.displayName ?? "Friend"} />
-                        <AvatarFallback>{getInitials(session.displayName)}</AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-medium text-foreground">
-                            {session.displayName ?? (session.isCurrentUser ? "You" : "FastTrack friend")}
-                          </p>
-                          <span className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em] text-accent">
-                            Live now
-                          </span>
-                          <span
-                            className="rounded-full border bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em]"
-                            style={{
-                              borderColor: `${stage.color}55`,
-                              color: stage.color,
-                            }}
-                          >
-                            {stage.label}
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          started {format(new Date(session.startedAt), "p")} • {formatCompactDuration(elapsedMinutes)} in • ends {format(new Date(Date.parse(session.startedAt) + session.plannedMinutes * 60000), "p")}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center justify-between gap-3 border-t border-white/[0.06] pt-3 sm:border-t-0 sm:pt-0">
-                      {friendsData.encouragementsEnabled ? (
-                        <EncouragementDialog
-                          target={{
-                            userId: session.userId,
-                            displayName: session.displayName,
-                            avatarUrl: session.avatarUrl,
-                            isCurrentUser: Boolean(session.isCurrentUser),
-                            encouragementCount: friend?.encouragementCount ?? 0,
-                          }}
-                        />
-                      ) : null}
-                      <div className="text-right">
-                        <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
-                          {formatCompactDuration(elapsedMinutes)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">planned {formatCompactDuration(session.plannedMinutes)}</p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </section>
-          ) : null}
-
           {friendsData.friends.length ? (
             friendsData.friends.map((friend) => {
               const latestCompletedSession = friend.latestCompletedSession;
               const completedStage = latestCompletedSession
                 ? getCompletedStage(latestCompletedSession.stageReached, latestCompletedSession.durationMinutes)
                 : null;
+              const liveSession = friend.activeSession;
+              const liveElapsedMinutes = liveSession ? getElapsedMinutes({ startedAt: liveSession.startedAt }, now) : 0;
+              const badgeStage = liveSession ? getStageForMinutes(liveElapsedMinutes) : completedStage;
 
               return (
                 <div
                   key={friend.id}
-                  className="glass-soft flex flex-col gap-4 rounded-[1.5rem] px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                  className={cn(
+                    "glass-soft flex flex-col gap-4 rounded-[1.5rem] px-4 py-4 sm:flex-row sm:items-center sm:justify-between",
+                    liveSession && friend.isCurrentUser ? "border border-primary/25 shadow-[0_16px_40px_rgba(124,92,255,0.12)]" : ""
+                  )}
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <Avatar size="sm">
@@ -571,21 +507,26 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                             You
                           </span>
                         ) : null}
-                        {!friend.activeSession && completedStage ? (
+                        {liveSession ? (
+                          <span className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em] text-accent">
+                            Live now
+                          </span>
+                        ) : null}
+                        {badgeStage ? (
                           <span
                             className="rounded-full border bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em]"
                             style={{
-                              borderColor: `${completedStage.color}55`,
-                              color: completedStage.color,
+                              borderColor: `${badgeStage.color}55`,
+                              color: badgeStage.color,
                             }}
                           >
-                            {completedStage.label}
+                            {badgeStage.label}
                           </span>
                         ) : null}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {friend.activeSession
-                          ? `Live now • started ${format(new Date(friend.activeSession.startedAt), "p")} • ${formatCompactDuration(getElapsedMinutes({ startedAt: friend.activeSession.startedAt }, now))} in`
+                        {liveSession
+                          ? `started ${format(new Date(liveSession.startedAt), "p")} • ${formatCompactDuration(liveElapsedMinutes)} in • ends ${format(new Date(Date.parse(liveSession.startedAt) + liveSession.plannedMinutes * 60000), "p")}`
                           : latestCompletedSession && completedStage
                             ? `Last fast ended ${formatDistanceToNow(new Date(latestCompletedSession.endedAt), { addSuffix: true })} • ${formatCompactDuration(latestCompletedSession.durationMinutes)} • ${completedStage.label}`
                             : `${friend.longestStreak} day longest streak`}
@@ -610,12 +551,12 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                         aria-label={`Remove ${friend.displayName ?? "friend"} from your circle`}>Remove</Button>
                     ) : null}
                     <div className="text-right">
-                      {friend.activeSession ? (
+                      {liveSession ? (
                         <>
                           <p className="font-[family:var(--font-heading)] text-lg font-semibold text-foreground">
-                            {formatCompactDuration(friend.activeSession.plannedMinutes)}
+                            {formatCompactDuration(liveElapsedMinutes)}
                           </p>
-                          <p className="text-xs text-muted-foreground">planned window</p>
+                          <p className="text-xs text-muted-foreground">planned {formatCompactDuration(liveSession.plannedMinutes)}</p>
                         </>
                       ) : latestCompletedSession ? (
                         <>
