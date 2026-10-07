@@ -303,7 +303,7 @@ export function ProfileView({ initialData, providers, signedIn, notificationCont
             </Button>
           </div>
           <p className="text-xs leading-5 text-muted-foreground">
-            Live fasting visibility is off by default. Turn it on only if you want friends to see when you are actively in a fasting window.
+            Accepted friends can see when you are actively in a fasting window. Hide it here if you would rather keep live fasts private.
           </p>
         </CardHeader>
         <CardContent className="space-y-5">
