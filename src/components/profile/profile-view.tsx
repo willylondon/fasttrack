@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Check, Image as ImageIcon, RotateCcw, Save, Upload, UserRound, Eye, EyeOff, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
+import { DeleteAccountCard } from "@/components/profile/delete-account-card";
 import { PushNotificationControl } from "@/components/profile/push-notification-control";
 import { SignInDialog } from "@/components/auth/sign-in-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -556,6 +557,8 @@ export function ProfileView({ initialData, providers, signedIn, notificationCont
           )}
         </CardContent>
       </Card>
+
+      <DeleteAccountCard />
     </div>
   );
 }
