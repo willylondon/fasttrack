@@ -5,6 +5,7 @@ import Resend from "next-auth/providers/resend";
 import { SupabaseAdapter } from "@auth/supabase-adapter";
 
 import { EMAIL_LINK_MAX_AGE_SECONDS, sendSignInEmail } from "@/lib/email-sign-in";
+import { isReviewerLoginEnabled } from "@/lib/reviewer-login";
 
 const providers = [];
 const hasSupabaseAdapterEnv = Boolean(
@@ -52,6 +53,8 @@ export const authProviders = {
   google: Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET),
   github: Boolean(process.env.AUTH_GITHUB_ID && process.env.AUTH_GITHUB_SECRET),
   email: hasEmailSignInEnv,
+  // Reviewer sessions are database rows, so this also needs the adapter.
+  reviewer: hasSupabaseAdapterEnv && isReviewerLoginEnabled(),
 };
 
 export const { auth, handlers, signIn, signOut } = NextAuth({

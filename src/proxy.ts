@@ -13,6 +13,7 @@ const PUBLIC_PATHS = new Set([
   "/privacy",
   "/terms",
   "/delete-account",
+  "/reviewer-login",
 ]);
 
 export default auth((request) => {

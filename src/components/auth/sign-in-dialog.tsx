@@ -28,6 +28,7 @@ type SignInDialogProps = {
     google: boolean;
     github: boolean;
     email?: boolean;
+    reviewer?: boolean;
   };
   size?: "default" | "sm" | "lg";
   variant?: "default" | "outline" | "secondary";
@@ -181,6 +182,11 @@ export function SignInDialog({
               <p className="text-xs text-muted-foreground">
                 Choose the account you want to use for streaks, history, friends, and saved progress.
               </p>
+              {providers.reviewer ? (
+                <Link className="block text-xs text-muted-foreground underline underline-offset-4" href="/reviewer-login">
+                  App store reviewer? Sign in here
+                </Link>
+              ) : null}
             </div>
           </DialogFooter>
         </DialogContent>
