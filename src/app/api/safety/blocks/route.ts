@@ -17,7 +17,7 @@ async function handle(request: Request, action: typeof blockMember, result: Reco
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const rateLimit = checkRateLimit(`safety:blocks:${userId}`, 30, 10 * 60_000);
+  const rateLimit = await checkRateLimit(`safety:blocks:${userId}`, 30, 10 * 60_000);
   if (!rateLimit.allowed) {
     return rateLimitedResponse(rateLimit.retryAfterSeconds);
   }

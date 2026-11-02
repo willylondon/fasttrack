@@ -23,7 +23,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const rateLimit = checkRateLimit(`friends:respond:${userId}`, 30, 60_000);
+  const rateLimit = await checkRateLimit(`friends:respond:${userId}`, 30, 60_000);
   if (!rateLimit.allowed) {
     return rateLimitedResponse(rateLimit.retryAfterSeconds);
   }

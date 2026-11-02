@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const rateLimit = checkRateLimit(`safety:reports:${userId}`, 10, 10 * 60_000);
+  const rateLimit = await checkRateLimit(`safety:reports:${userId}`, 10, 10 * 60_000);
   if (!rateLimit.allowed) {
     return rateLimitedResponse(rateLimit.retryAfterSeconds, "Too many reports. Try again later.");
   }
@@ -40,6 +40,7 @@ export async function POST(request: Request) {
 
   try {
     await createUserReport({ reporterId: userId, ...parsed.data });
+    console.warn("user_report_created", { reason: parsed.data.reason, contentType: parsed.data.contentType });
 
     return NextResponse.json({ reported: true });
   } catch (error) {

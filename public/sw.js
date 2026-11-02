@@ -1,4 +1,4 @@
-const STATIC_CACHE = "fasttrack-static-v3";
+const STATIC_CACHE = "fasttrack-static-v4";
 const STATIC_ASSETS = [
   "/offline.html",
   "/manifest.webmanifest",

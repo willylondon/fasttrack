@@ -18,7 +18,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const rateLimit = checkRateLimit(`account:delete:${userId}`, 5, 10 * 60_000);
+  const rateLimit = await checkRateLimit(`account:delete:${userId}`, 5, 10 * 60_000);
   if (!rateLimit.allowed) {
     return rateLimitedResponse(rateLimit.retryAfterSeconds);
   }

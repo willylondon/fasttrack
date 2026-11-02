@@ -15,7 +15,7 @@ export async function POST(
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const rateLimit = checkRateLimit(`challenges:join:${userId}`, 20, 60_000);
+  const rateLimit = await checkRateLimit(`challenges:join:${userId}`, 20, 60_000);
   if (!rateLimit.allowed) {
     return rateLimitedResponse(rateLimit.retryAfterSeconds);
   }
@@ -41,7 +41,7 @@ export async function DELETE(
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const rateLimit = checkRateLimit(`challenges:join:${userId}`, 20, 60_000);
+  const rateLimit = await checkRateLimit(`challenges:join:${userId}`, 20, 60_000);
   if (!rateLimit.allowed) {
     return rateLimitedResponse(rateLimit.retryAfterSeconds);
   }

@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const rateLimit = checkRateLimit(`checkins:save:${userId}`, 30, 60_000);
+  const rateLimit = await checkRateLimit(`checkins:save:${userId}`, 30, 60_000);
   if (!rateLimit.allowed) {
     return rateLimitedResponse(rateLimit.retryAfterSeconds);
   }
