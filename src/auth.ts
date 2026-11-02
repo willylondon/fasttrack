@@ -1,7 +1,10 @@
 import NextAuth from "next-auth";
 import GitHub from "next-auth/providers/github";
 import Google from "next-auth/providers/google";
+import Resend from "next-auth/providers/resend";
 import { SupabaseAdapter } from "@auth/supabase-adapter";
+
+import { EMAIL_LINK_MAX_AGE_SECONDS, sendSignInEmail } from "@/lib/email-sign-in";
 
 const providers = [];
 const hasSupabaseAdapterEnv = Boolean(
@@ -26,9 +29,26 @@ if (process.env.AUTH_GITHUB_ID && process.env.AUTH_GITHUB_SECRET) {
   );
 }
 
+// Email links need the database adapter to store their one-time tokens.
+const hasEmailSignInEnv = Boolean(
+  hasSupabaseAdapterEnv && process.env.AUTH_RESEND_KEY && process.env.AUTH_EMAIL_FROM
+);
+
+if (hasEmailSignInEnv) {
+  providers.push(
+    Resend({
+      apiKey: process.env.AUTH_RESEND_KEY,
+      from: process.env.AUTH_EMAIL_FROM,
+      maxAge: EMAIL_LINK_MAX_AGE_SECONDS,
+      sendVerificationRequest: (params) => sendSignInEmail(params),
+    })
+  );
+}
+
 export const authProviders = {
   google: Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET),
   github: Boolean(process.env.AUTH_GITHUB_ID && process.env.AUTH_GITHUB_SECRET),
+  email: hasEmailSignInEnv,
 };
 
 export const { auth, handlers, signIn, signOut } = NextAuth({
