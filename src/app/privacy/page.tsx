@@ -26,7 +26,7 @@ const sections = [
   },
   {
     title: "Third-party services",
-    body: "FastTrack uses Google or GitHub for sign-in, which provide your name, email address and profile image; Supabase for data and avatar storage; and Vercel for hosting and app delivery. Only the data needed to run the product is shared with those providers. FastTrack does not sell your data or show advertising.",
+    body: "FastTrack uses Google or GitHub for sign-in, which provide your name, email address and profile image; Resend to deliver sign-in emails if you choose an email link, which requires sharing your email address with it; Supabase for data and avatar storage; and Vercel for hosting and app delivery. Only the data needed to run the product is shared with those providers. FastTrack does not sell your data or show advertising.",
   },
   {
     title: "Reports and blocking",

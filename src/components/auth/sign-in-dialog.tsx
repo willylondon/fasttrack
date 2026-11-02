@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useState, useTransition, type FormEvent } from "react";
 import { toast } from "sonner";
 import { signIn } from "next-auth/react";
 import { CircleUserRound, Globe2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,7 @@ type SignInDialogProps = {
   providers: {
     google: boolean;
     github: boolean;
+    email?: boolean;
   };
   size?: "default" | "sm" | "lg";
   variant?: "default" | "outline" | "secondary";
@@ -43,7 +45,10 @@ export function SignInDialog({
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  const hasAnyProvider = providers.google || providers.github;
+  const [email, setEmail] = useState("");
+  const [emailSentTo, setEmailSentTo] = useState<string | null>(null);
+
+  const hasAnyProvider = providers.google || providers.github || providers.email;
 
   const resolveCallbackUrl = () => {
     if (typeof window === "undefined") {
@@ -51,6 +56,29 @@ export function SignInDialog({
     }
 
     return resolveSafeSignInCallback(window.location.href);
+  };
+
+  const handleEmailSignIn = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const address = email.trim();
+    setPendingProvider("email");
+    if (!safeStorageWrite("sessionStorage", SYNC_AFTER_SIGN_IN_KEY, "true")) {
+      toast.warning("Device storage is unavailable. Your local progress cannot sync automatically after sign-in.");
+    }
+    startTransition(async () => {
+      try {
+        const result = await signIn("resend", { email: address, callbackUrl: resolveCallbackUrl(), redirect: false });
+        if (result?.error) {
+          toast.error("We couldn’t send that link. Please wait a few minutes and try again.");
+        } else {
+          setEmailSentTo(address);
+        }
+      } catch {
+        toast.error("We couldn’t send that link. Please wait a few minutes and try again.");
+      } finally {
+        setPendingProvider(null);
+      }
+    });
   };
 
   const handleSignIn = (provider: "google" | "github") => {
@@ -116,6 +144,31 @@ export function SignInDialog({
               <CircleUserRound className="mr-2 size-4" />
               {pendingProvider === "github" ? "Connecting GitHub..." : "Continue with GitHub"}
             </Button>
+            {providers.email ? (
+              emailSentTo ? (
+                <p className="rounded-xl border border-border/70 px-4 py-3 text-sm leading-6 text-muted-foreground" role="status">
+                  Check {emailSentTo} for your sign-in link. It expires in 15 minutes, and may land in spam.
+                </p>
+              ) : (
+                <form className="space-y-2" onSubmit={handleEmailSignIn}>
+                  <label className="block text-sm font-medium text-foreground" htmlFor="sign-in-email">Or use your email</label>
+                  <Input
+                    autoComplete="email"
+                    disabled={isPending}
+                    id="sign-in-email"
+                    inputMode="email"
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="you@example.com"
+                    required
+                    type="email"
+                    value={email}
+                  />
+                  <Button className="h-11 w-full" disabled={!acceptedTerms || isPending || !email.trim()} type="submit" variant="secondary">
+                    {pendingProvider === "email" ? "Sending link..." : "Email me a sign-in link"}
+                  </Button>
+                </form>
+              )
+            ) : null}
             {!hasAnyProvider ? (
               <p className="text-sm text-muted-foreground">
                 Sign-in is unavailable in this environment. You can still track fasts on this device.

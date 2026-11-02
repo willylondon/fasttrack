@@ -34,6 +34,9 @@ AUTH_GOOGLE_ID=
 AUTH_GOOGLE_SECRET=
 AUTH_GITHUB_ID=
 AUTH_GITHUB_SECRET=
+# Optional: email link sign-in stays off until both are set.
+AUTH_RESEND_KEY=
+AUTH_EMAIL_FROM=FastTrack <signin@fasttracker.online>
 ```
 
 3. Apply the SQL in `supabase/migrations/20260527120000_fasttrack_schema.sql`.
