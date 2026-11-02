@@ -40,6 +40,7 @@ export function SignInDialog({
 }: SignInDialogProps) {
   const [open, setOpen] = useState(false);
   const [pendingProvider, setPendingProvider] = useState<string | null>(null);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const hasAnyProvider = providers.google || providers.github;
@@ -85,9 +86,23 @@ export function SignInDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 px-6 pb-2">
+            <label className="flex items-start gap-3 text-sm leading-6 text-muted-foreground">
+              <input
+                checked={acceptedTerms}
+                className="mt-1 size-4 shrink-0"
+                onChange={(event) => setAcceptedTerms(event.target.checked)}
+                type="checkbox"
+              />
+              <span>
+                I am 18 or older and agree to the{" "}
+                <Link className="underline underline-offset-4 hover:text-foreground" href="/terms">Terms</Link>{" "}
+                and{" "}
+                <Link className="underline underline-offset-4 hover:text-foreground" href="/privacy">Privacy Policy</Link>.
+              </span>
+            </label>
             <Button
               className="h-11 w-full justify-center bg-white text-black hover:bg-white/90"
-              disabled={!providers.google || isPending}
+              disabled={!providers.google || !acceptedTerms || isPending}
               onClick={() => handleSignIn("google")}
             >
               <Globe2 className="mr-2 size-4" />
@@ -95,7 +110,7 @@ export function SignInDialog({
             </Button>
             <Button
               className="h-11 w-full justify-center bg-[#1f2937] text-white hover:bg-[#111827]"
-              disabled={!providers.github || isPending}
+              disabled={!providers.github || !acceptedTerms || isPending}
               onClick={() => handleSignIn("github")}
             >
               <CircleUserRound className="mr-2 size-4" />
@@ -112,17 +127,6 @@ export function SignInDialog({
             <div className="w-full space-y-2">
               <p className="text-xs text-muted-foreground">
                 Choose the account you want to use for streaks, history, friends, and saved progress.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                By continuing, you agree to the{" "}
-                <Link className="underline underline-offset-4 hover:text-foreground" href="/terms">
-                  Terms
-                </Link>{" "}
-                and{" "}
-                <Link className="underline underline-offset-4 hover:text-foreground" href="/privacy">
-                  Privacy Policy
-                </Link>
-                .
               </p>
             </div>
           </DialogFooter>

@@ -1,5 +1,6 @@
 "use client";
 
+import { MemberSafetyActions } from "@/components/social/member-safety-actions";
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Loader2, MessageCircle, Send } from "lucide-react";
@@ -198,6 +199,15 @@ export function EncouragementDialog({ target }: EncouragementDialogProps) {
                         </p>
                       </div>
                       <p className="mt-1 text-sm leading-6 text-muted-foreground">{comment.body}</p>
+                      {comment.authorId !== target.userId && target.isCurrentUser ? (
+                        <MemberSafetyActions
+                          contentId={comment.id}
+                          contentType="encouragement"
+                          displayName={comment.author?.displayName}
+                          triggerLabel="Report"
+                          userId={comment.authorId}
+                        />
+                      ) : null}
                     </div>
                   </div>
                 ))}

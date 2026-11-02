@@ -1,5 +1,6 @@
 "use client";
 
+import { MemberSafetyActions } from "@/components/social/member-safety-actions";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { Crown } from "lucide-react";
@@ -98,6 +99,7 @@ function renderRows(entries: LeaderboardEntry[], statLabel: string, showEncourag
             </div>
             <div className="flex shrink-0 items-center justify-between gap-3 border-t border-white/[0.06] pt-3 sm:border-t-0 sm:pt-0">
               {showEncouragements ? <EncouragementDialog target={entry} /> : null}
+              {!entry.isCurrentUser ? <MemberSafetyActions displayName={entry.displayName} userId={entry.userId} /> : null}
               <div className="text-right">
                 <p className="font-[family:var(--font-heading)] text-3xl font-bold text-foreground">{entry.stat}</p>
                 <p className="text-xs text-muted-foreground">{statLabel}</p>

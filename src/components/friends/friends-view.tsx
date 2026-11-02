@@ -1,5 +1,6 @@
 "use client";
 
+import { MemberSafetyActions } from "@/components/social/member-safety-actions";
 import { useEffect, useRef, useState } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import Link from "next/link";
@@ -239,6 +240,26 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
     }
   }
 
+  async function unblock(targetUserId: string) {
+    if (mutationLock.current) return;
+    mutationLock.current = true;
+    setPendingActionId(targetUserId);
+    try {
+      const response = await fetch("/api/safety/blocks", { method: "DELETE",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ targetUserId }) });
+      if (!response.ok) throw new Error(await readApiError(response));
+      setFriendsData((current) => ({ ...current,
+        blockedMembers: current.blockedMembers.filter((member) => member.id !== targetUserId),
+      }));
+      toast.success("Member unblocked.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to unblock this member.");
+    } finally {
+      mutationLock.current = false;
+      setPendingActionId(null);
+    }
+  }
+
   if (!signedIn) {
     return (
       <EmptyState
@@ -398,6 +419,7 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      <MemberSafetyActions displayName={request.sender.displayName} userId={request.sender.id} />
                       <Button
                         className="rounded-xl"
                         disabled={pendingActionId === request.id}
@@ -550,6 +572,7 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
                         onClick={() => void removeFriend(friend.id, friend.displayName ?? "this friend")}
                         aria-label={`Remove ${friend.displayName ?? "friend"} from your circle`}>Remove</Button>
                     ) : null}
+                    {!friend.isCurrentUser ? <MemberSafetyActions displayName={friend.displayName} userId={friend.id} /> : null}
                     <div className="text-right">
                       {liveSession ? (
                         <>
@@ -591,6 +614,23 @@ export function FriendsView({ initialData, providers, signedIn }: FriendsViewPro
           )}
         </CardContent>
       </Card>
+
+      {friendsData.blockedMembers.length ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Blocked members</CardTitle>
+            <CardDescription>Blocked members can&apos;t find you or send requests. Unblocking doesn&apos;t restore a friend connection.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {friendsData.blockedMembers.map((member) => (
+              <div key={member.id} className="glass-soft flex items-center justify-between gap-3 rounded-[1.5rem] px-4 py-3">
+                <p className="truncate text-sm font-medium text-foreground">{member.displayName ?? "FastTrack member"}</p>
+                <Button disabled={pendingActionId !== null} onClick={() => void unblock(member.id)} size="sm" variant="ghost">Unblock</Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

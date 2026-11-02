@@ -14,11 +14,15 @@ const sections = [
   },
   {
     title: "Eligibility and safety",
-    body: "You should only use FastTrack if fasting is appropriate for you. If you are under 18, pregnant, managing diabetes, recovering from illness, or have a history of disordered eating, seek qualified medical guidance before fasting.",
+    body: "You must be 18 or older to use FastTrack. Only use it if fasting is appropriate for you. If you are pregnant, managing diabetes, recovering from illness, or have a history of disordered eating, seek qualified medical guidance before fasting.",
   },
   {
     title: "Accounts and conduct",
     body: "You are responsible for maintaining access to your account and for using social features respectfully. Do not impersonate others, scrape member data, or use FastTrack to harass or pressure other users.",
+  },
+  {
+    title: "Prohibited content and behavior",
+    body: "Names, avatars, encouragements and challenges must not contain harassment, threats, hate speech, sexual content, spam, illegal content, or anything that promotes self-harm, disordered eating or unsafe fasting. You can report or block any member from their name in the app. We review reports and may remove content or suspend or delete accounts that break these rules.",
   },
   {
     title: "Availability",
@@ -46,7 +50,7 @@ export default async function TermsPage() {
       title="Terms of Use"
     >
       <div className="grid gap-6">
-        <p className="text-sm text-muted-foreground">Last updated: September 30, 2026</p>
+        <p className="text-sm text-muted-foreground">Last updated: November 2, 2026</p>
         {sections.map((section) => (
           <Card key={section.title} className="section-enter">
             <CardHeader>
@@ -60,7 +64,7 @@ export default async function TermsPage() {
         <Card>
           <CardHeader><CardTitle><h2>Support and data requests</h2></CardTitle></CardHeader>
           <CardContent className="space-y-3 text-sm leading-6 text-muted-foreground sm:text-base">
-            <p>For help with FastTrack, account access, or a request to delete your account data, contact <a className="text-primary-readable underline underline-offset-4" href="mailto:willardwells@gmail.com">willardwells@gmail.com</a>.</p>
+            <p>For help with FastTrack, account access, or if you can&apos;t sign in to delete your account, contact <a className="text-primary-readable underline underline-offset-4" href="mailto:willardwells@gmail.com">willardwells@gmail.com</a>.</p>
             <p>Include the email used for your account and a short description of your request. Never send your password. Guest data stays in your browser and can be removed by clearing this site’s storage.</p>
           </CardContent>
         </Card>

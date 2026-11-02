@@ -1,5 +1,6 @@
 "use client";
 
+import { MemberSafetyActions } from "@/components/social/member-safety-actions";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Clock, Crown, Share2, Target, Trophy, UserMinus, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -15,6 +16,7 @@ import Link from "next/link";
 type ChallengeDetailViewProps = {
   challenge: ChallengeDetail;
   signedIn: boolean;
+  currentUserId?: string | null;
 };
 
 function getInitials(value?: string | null) {
@@ -43,7 +45,7 @@ function getUnit(challengeType: ChallengeDetail["challengeType"]) {
   return "milestones";
 }
 
-export function ChallengeDetailView({ challenge, signedIn }: ChallengeDetailViewProps) {
+export function ChallengeDetailView({ challenge, signedIn, currentUserId }: ChallengeDetailViewProps) {
   const router = useRouter();
   const hasEnded = challenge.endsAt <= new Date().toISOString();
   const leader = challenge.participants[0] ?? null;
@@ -109,6 +111,15 @@ export function ChallengeDetailView({ challenge, signedIn }: ChallengeDetailView
                     {CHALLENGE_TYPE_LABELS[challenge.challengeType]} challenge
                     {challenge.creator.displayName && ` · Created by ${challenge.creator.displayName}`}
                   </CardDescription>
+                  {signedIn && challenge.creatorId !== currentUserId ? (
+                    <MemberSafetyActions
+                      contentId={challenge.id}
+                      contentType="challenge"
+                      displayName={challenge.creator.displayName}
+                      triggerLabel="Report challenge"
+                      userId={challenge.creatorId}
+                    />
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -240,6 +251,9 @@ export function ChallengeDetailView({ challenge, signedIn }: ChallengeDetailView
                         <p className="mt-1 text-xs text-muted-foreground">
                           {participant.progress} / {challenge.targetValue} {getUnit(challenge.challengeType)}
                         </p>
+                        {signedIn && participant.userId !== currentUserId ? (
+                          <MemberSafetyActions displayName={participant.displayName} userId={participant.userId} />
+                        ) : null}
                       </div>
                     </div>
                     <div className="w-full text-left sm:w-auto sm:text-right">

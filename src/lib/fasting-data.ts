@@ -1,5 +1,6 @@
 "use server";
 
+import { getBlockedMembers, getHiddenMemberIds } from "@/lib/user-safety";
 import "server-only";
 
 import { auth } from "@/auth";
@@ -393,10 +394,12 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
       friends: [],
       liveSessions: [],
       encouragementsEnabled: false,
+      blockedMembers: [],
     };
   }
 
   const supabase = createAdminClient();
+  const blockedMembersPromise = getBlockedMembers(userId);
   const [incomingResult, outgoingResult, acceptedResult] = await Promise.all([
     supabase
       .from("friendships")
@@ -522,6 +525,7 @@ export async function getFriendsPageData(userId: string | null | undefined): Pro
     friends,
     liveSessions,
     encouragementsEnabled: encouragementSummary.available,
+    blockedMembers: await blockedMembersPromise,
   };
 }
 
@@ -2037,7 +2041,10 @@ export async function getChallengesListData(userId: string | null | undefined): 
 
   const profileMap = new Map(profiles.map((p: { id: string; display_name: string | null; avatar_url: string | null }) => [p.id, p]));
 
-  const challenges: Challenge[] = challengesResult.data.map((c: DatabaseChallenge) => {
+  const hiddenMemberIds = await getHiddenMemberIds(userId);
+  const visibleChallenges = challengesResult.data.filter((c: DatabaseChallenge) => !hiddenMemberIds.has(c.creator_id));
+
+  const challenges: Challenge[] = visibleChallenges.map((c: DatabaseChallenge) => {
     const creator = profileMap.get(c.creator_id) ?? { display_name: null, avatar_url: null };
     return mapChallenge(c, participantCounts.get(c.id) ?? 0, {
       displayName: creator.display_name,
@@ -2069,6 +2076,9 @@ export async function getChallengeDetail(challengeId: string, userId: string | n
   if (participantResult.error) throw participantResult.error;
 
   const challenge = challengeResult.data as DatabaseChallenge;
+  const hiddenMemberIds = await getHiddenMemberIds(userId);
+
+  if (hiddenMemberIds.has(challenge.creator_id)) return null;
 
   const participantIds = (participantResult.data ?? []).map((p: DatabaseChallengeParticipant) => p.user_id);
 
@@ -2115,7 +2125,8 @@ export async function getChallengeDetail(challengeId: string, userId: string | n
     };
   });
 
-  const participants = sortChallengeParticipants(await Promise.all(participantPromises));
+  const participants = sortChallengeParticipants(await Promise.all(participantPromises))
+    .filter((participant) => !hiddenMemberIds.has(participant.userId));
 
   return {
     ...mapChallenge(challenge, participants.length, { displayName: creator.display_name, avatarUrl: creator.avatar_url }),

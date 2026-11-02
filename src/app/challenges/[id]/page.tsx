@@ -43,6 +43,7 @@ export default async function ChallengeDetailPage(
       <ChallengeDetailView
         challenge={challenge}
         signedIn={Boolean(session?.user?.id)}
+        currentUserId={session?.user?.id}
       />
     </AppShell>
   );
