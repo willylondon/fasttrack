@@ -17,7 +17,7 @@ Order matters. The friends page and block features fail if the code ships before
 The app is tied to its domain, so do this before building it.
 
 1. Add the domain in Vercel and set `NEXT_PUBLIC_APP_URL`.
-2. Add `https://<domain>/api/auth/callback/google` and `.../github` to both OAuth apps.
+2. Add `https://fasttracker.online/api/auth/callback/google` and `.../github` to both OAuth apps.
 
 ## 3. Build the app
 
@@ -28,7 +28,7 @@ npm install -g @bubblewrap/cli
 ```
 
 ```bash
-mkdir fasttrack-android && cd fasttrack-android && bubblewrap init --manifest=https://<domain>/manifest.webmanifest
+mkdir fasttrack-android && cd fasttrack-android && bubblewrap init --manifest=https://fasttracker.online/manifest.webmanifest
 ```
 
 ```bash
@@ -44,7 +44,7 @@ Without these the app shows a browser bar. In Vercel, set:
 - `ANDROID_PACKAGE_NAME`
 - `ANDROID_SHA256_CERT_FINGERPRINTS`: comma-separated. Include the upload key and the **App signing key** from Play Console > Test and release > Setup > App signing.
 
-Redeploy, then confirm `https://<domain>/.well-known/assetlinks.json` lists them.
+Redeploy, then confirm `https://fasttracker.online/.well-known/assetlinks.json` lists them.
 
 ## 5. Play Console
 

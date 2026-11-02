@@ -6,7 +6,7 @@ import { PwaSupport } from "@/components/system/pwa-support";
 import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://fasttrack-alpha.vercel.app"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://fasttracker.online"),
   title: "FastTrack — Fasting Window Tracker & Accountability App",
   description:
     "Track fasting windows, build streaks, log sessions, and stay accountable with friends.",
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     title: "FastTrack — Fasting Window Tracker & Accountability App",
     description:
       "Track fasting windows, build streaks, log sessions, and stay accountable with friends.",
-    url: "https://fasttrack-alpha.vercel.app",
+    url: process.env.NEXT_PUBLIC_APP_URL ?? "https://fasttracker.online",
     siteName: "FastTrack",
     images: [
       {
