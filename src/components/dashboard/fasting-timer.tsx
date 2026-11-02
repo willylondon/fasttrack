@@ -1324,8 +1324,8 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
           <ShieldAlert className="size-4" />
         </div>
         <p>
-          FastTrack is a tracking tool, not medical advice. Fasting may not be appropriate for everyone. People
-          under 18, pregnant users, users with diabetes, eating-disorder history, or medical conditions should
+          FastTrack is for adults 18 and over. It is a tracking tool, not medical advice. Fasting may not be appropriate
+          for everyone. Pregnant users, users with diabetes, eating-disorder history, or medical conditions should
           seek qualified medical guidance before fasting.
         </p>
       </div>
@@ -1340,9 +1340,8 @@ export function FastingTimer({ initialData, signedIn, userId }: FastingTimerProp
           </DialogHeader>
           <div className="space-y-4 text-sm leading-6 text-muted-foreground">
             <div className="premium-rail rounded-[1.25rem] px-4 py-4">
-              <p className="font-medium text-foreground">Do not start a fast without qualified medical guidance if you are:</p>
+              <p className="font-medium text-foreground">FastTrack is not for anyone under 18. Do not start a fast without qualified medical guidance if you are:</p>
               <ul className="mt-3 list-disc space-y-2 pl-5">
-                <li>Under 18.</li>
                 <li>Pregnant, trying to become pregnant, or breastfeeding.</li>
                 <li>Diabetic, using glucose-lowering medication, or managing blood sugar risk.</li>
                 <li>Underweight, medically at risk, or recovering from illness.</li>

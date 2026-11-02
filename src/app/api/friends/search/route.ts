@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const rateLimit = checkRateLimit(`friends:search:${userId}`, 30, 60_000);
+  const rateLimit = await checkRateLimit(`friends:search:${userId}`, 30, 60_000);
   if (!rateLimit.allowed) {
     return rateLimitedResponse(rateLimit.retryAfterSeconds, "Too many searches. Try again shortly.");
   }

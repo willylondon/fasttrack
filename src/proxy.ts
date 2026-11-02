@@ -12,6 +12,7 @@ const PUBLIC_PATHS = new Set([
   "/challenges",
   "/privacy",
   "/terms",
+  "/delete-account",
 ]);
 
 export default auth((request) => {
@@ -35,7 +36,7 @@ export default auth((request) => {
 export const config = {
   matcher: [
     {
-      source: "/((?!api|_next/static|_next/image|favicon.ico|manifest.webmanifest|sitemap.xml|robots.txt|opengraph-image|sw.js|offline.html|icon-.*\\.png|apple-touch-icon\\.png|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|css|js)$).*)",
+      source: "/((?!api|\\.well-known/|_next/static|_next/image|favicon.ico|manifest.webmanifest|sitemap.xml|robots.txt|opengraph-image|sw.js|offline.html|icon-.*\\.png|apple-touch-icon\\.png|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|css|js)$).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },
@@ -44,11 +45,11 @@ export const config = {
     // Server Action POSTs are never background prefetches. Preserve the existing
     // wrapper/renewal when next-action and prefetch headers appear together.
     {
-      source: "/((?!api|_next/static|_next/image|favicon.ico|manifest.webmanifest|sitemap.xml|robots.txt|opengraph-image|sw.js|offline.html|icon-.*\\.png|apple-touch-icon\\.png|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|css|js)$).*)",
+      source: "/((?!api|\\.well-known/|_next/static|_next/image|favicon.ico|manifest.webmanifest|sitemap.xml|robots.txt|opengraph-image|sw.js|offline.html|icon-.*\\.png|apple-touch-icon\\.png|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|css|js)$).*)",
       has: [{ type: "header", key: "next-action" }],
     },
     // Catch unknown/protected paths even when a client spoofs prefetch headers.
     // Keep this exact public allowlist in sync with the independently guarded pages.
-    "/((?!api|_next/static|_next/image|favicon.ico|manifest.webmanifest|sitemap.xml|robots.txt|opengraph-image|sw.js|offline.html|icon-.*\\.png|apple-touch-icon\\.png|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|css|js)$|(?:history|feed|friends|leaderboard|profile|privacy|terms|challenges)/?$|challenges/[^/]+/?$|$).*)",
+    "/((?!api|\\.well-known/|_next/static|_next/image|favicon.ico|manifest.webmanifest|sitemap.xml|robots.txt|opengraph-image|sw.js|offline.html|icon-.*\\.png|apple-touch-icon\\.png|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|css|js)$|(?:history|feed|friends|leaderboard|profile|privacy|terms|delete-account|challenges)/?$|challenges/[^/]+/?$|$).*)",
   ],
 };

@@ -192,6 +192,7 @@ export type FriendsPageData = {
   friends: FriendListItem[];
   liveSessions: FriendLiveSession[];
   encouragementsEnabled: boolean;
+  blockedMembers: { id: string; displayName: string | null; avatarUrl: string | null }[];
 };
 
 export type BadgeDefinition = {

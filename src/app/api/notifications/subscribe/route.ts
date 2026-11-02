@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const rateLimit = checkRateLimit(`notifications:subscribe:${userId}`, 10, 60_000);
+  const rateLimit = await checkRateLimit(`notifications:subscribe:${userId}`, 10, 60_000);
   if (!rateLimit.allowed) {
     return rateLimitedResponse(rateLimit.retryAfterSeconds);
   }

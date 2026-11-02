@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const rateLimit = checkRateLimit(`challenges:create:${userId}`, 5, 10 * 60_000);
+  const rateLimit = await checkRateLimit(`challenges:create:${userId}`, 5, 10 * 60_000);
   if (!rateLimit.allowed) {
     return rateLimitedResponse(rateLimit.retryAfterSeconds, "Too many new challenges. Try again later.");
   }

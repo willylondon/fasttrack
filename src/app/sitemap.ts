@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://fasttrack-alpha.vercel.app";
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://fasttracker.online";
 
   return [
     {
@@ -12,6 +12,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     {
       url: `${baseUrl}/privacy`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.4,
+    },
+    {
+      url: `${baseUrl}/delete-account`,
       lastModified: new Date(),
       changeFrequency: "monthly",
       priority: 0.4,

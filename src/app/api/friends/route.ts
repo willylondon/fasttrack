@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const limit = checkRateLimit(`friends:request:${userId}`, 10, 10 * 60_000);
+  const limit = await checkRateLimit(`friends:request:${userId}`, 10, 10 * 60_000);
   if (!limit.allowed) {
     return NextResponse.json({ message: "Too many friend requests. Try again later." }, {
       status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) },

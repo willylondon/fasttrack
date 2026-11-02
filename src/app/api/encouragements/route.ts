@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const rateLimit = checkRateLimit(`encouragements:send:${userId}`, 20, 10 * 60_000);
+  const rateLimit = await checkRateLimit(`encouragements:send:${userId}`, 20, 10 * 60_000);
   if (!rateLimit.allowed) {
     return rateLimitedResponse(rateLimit.retryAfterSeconds, "Too many encouragements. Try again later.");
   }
