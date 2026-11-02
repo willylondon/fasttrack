@@ -15,9 +15,9 @@ const BADGE_SEED = [
     xp_reward: 50,
   },
   {
-    name: "Sweet Spot",
+    name: "16-Hour Check-in",
     slug: "sweet-spot",
-    description: "Reached the 16-hour autophagy sweet spot.",
+    description: "Logged a 16-hour window. This badge does not measure autophagy or health benefits.",
     icon: "🧬",
     category: "milestone",
     requirement_type: "milestone_hours",
